@@ -1,0 +1,31 @@
+[
+  {
+    "id": 1,
+    "nama_sekolah": "SDN CIDENG 02 PG.",
+    "jenjang": "SD",
+    "prioritas_1": [
+      {"rt": "015", "rw": "002", "kelurahan": "CIDENG", "kecamatan": "GAMBIR"}
+    ],
+    "prioritas_2": [
+      {"rt": "001", "rw": "003", "kelurahan": "CIDENG", "kecamatan": "GAMBIR"},
+      {"rt": "002", "rw": "003", "kelurahan": "CIDENG", "kecamatan": "GAMBIR"}
+    ],
+    "prioritas_3": [
+      {"kelurahan": "CIDENG", "kecamatan": "GAMBIR"}
+    ]
+  },
+  {
+    "id": 2,
+    "nama_sekolah": "SMAN 4 JAKARTA",
+    "jenjang": "SMA",
+    "prioritas_1": [
+      {"rt": "002", "rw": "004", "kelurahan": "CIKINI", "kecamatan": "MENTENG"}
+    ],
+    "prioritas_2": [
+      {"rt": "001", "rw": "003", "kelurahan": "CIKINI", "kecamatan": "MENTENG"}
+    ],
+    "prioritas_3": [
+      {"kelurahan": "CIKINI", "kecamatan": "MENTENG"}
+    ]
+  }
+]
