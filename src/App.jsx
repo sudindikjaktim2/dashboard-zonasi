@@ -2,27 +2,55 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-// Fungsi helper untuk normalisasi teks (anti-typo spasi dan karakter khusus)
+// Fungsi helper untuk normalisasi teks pencocokan (anti-typo)
 const normalisasiTeks = (teks) => {
   return String(teks || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+};
+
+// Fungsi helper untuk merapikan nama Kelurahan di Dropdown
+const bersihkanNamaKelurahan = (teks) => {
+  let clean = String(teks || '').toUpperCase().trim();
+  clean = clean.replace(/^KELURAHAN\s+/i, '').replace(/^KEL\.\s+/i, '').trim();
+  return clean;
 };
 
 export default function DashboardZonasiTerpadu() {
   // State Management Utama
   const [dataSekolah, setDataSekolah] = useState([]);
-  const [formData, setFormData] = useState({ kecamatan: '', kelurahan: '', rt: '', rw: '' });
+  const [listKelurahan, setListKelurahan] = useState([]); // State baru untuk Dropdown
+  const [formData, setFormData] = useState({ kelurahan: '', rt: '', rw: '' });
   const [hasilPencarian, setHasilPencarian] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard'); 
+  // State khusus untuk fitur Autocomplete Kelurahan
+  const [filteredKelurahan, setFilteredKelurahan] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   
-  // State untuk mengontrol Accordion FAQ secara mandiri (bisa buka lebih dari satu)
+  // State untuk mengontrol Accordion FAQ secara mandiri
   const [openFaqs, setOpenFaqs] = useState({});
   const toggleFaq = (id) => {
     setOpenFaqs(prev => ({ ...prev, [id]: !prev[id] }));
   };
+// Handler khusus untuk Autocomplete Kelurahan (Muncul setelah 3 huruf)
+  const handleKelurahanChange = (e) => {
+    const val = e.target.value.toUpperCase();
+    setFormData({ ...formData, kelurahan: val });
+    
+    if (val.length >= 3) {
+      const filtered = listKelurahan.filter(k => k.includes(val));
+      setFilteredKelurahan(filtered);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
 
+  const handleSelectKelurahan = (kel) => {
+    setFormData({ ...formData, kelurahan: kel });
+    setShowSuggestions(false); // Tutup dropdown setelah dipilih
+  };
   // Proses Load & Parse Data Excel
-  useEffect(() => {
+ useEffect(() => {
     const loadAllExcelFiles = async () => {
       const fileConfigs = [
         { jenjang: 'SD', url: '/WILAYAH_SD_T1.xlsx' },
@@ -41,11 +69,8 @@ export default function DashboardZonasiTerpadu() {
           const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           const parsedSchools = [];
+          const localKelurahanMap = new Map(); // Menggunakan Map untuk mencegah duplikat spasi
           let currentSchool = null;
-          
-          let lastKecPrio1 = '';
-          let lastKecPrio2 = '';
-          let lastKecPrio3 = '';
 
           for (let i = 0; i < rawRows.length; i++) {
             const row = rawRows[i];
@@ -64,60 +89,90 @@ export default function DashboardZonasiTerpadu() {
                 prioritas_3: []
               };
               parsedSchools.push(currentSchool);
-              
-              lastKecPrio1 = '';
-              lastKecPrio2 = '';
-              lastKecPrio3 = '';
             }
 
             if (currentSchool) {
-              // --- PRIORITAS 1 ---
+              // Fungsi pintar untuk menyaring kelurahan ke Dropdown
+              const tambahKelurahan = (teks) => {
+                if (!teks) return;
+                const clean = bersihkanNamaKelurahan(teks);
+                const key = normalisasiTeks(clean); // Cth: "BIDARACINA" (tanpa spasi)
+                
+                if (!localKelurahanMap.has(key)) {
+                  localKelurahanMap.set(key, clean);
+                } else {
+                  // Jika yang tersimpan sebelumnya gak ada spasi (BIDARACINA), 
+                  // timpa dengan versi yang ada spasinya (BIDARA CINA) agar dropdown rapi.
+                  if (clean.includes(' ') && !localKelurahanMap.get(key).includes(' ')) {
+                    localKelurahanMap.set(key, clean);
+                  }
+                }
+              };
+
+              if (row[5]) tambahKelurahan(row[5]);
+              if (row[7]) tambahKelurahan(row[7]);
+              if (row[9]) tambahKelurahan(row[9]);
+              if (row[11]) tambahKelurahan(row[11]);
+
+              // Mapping Prioritas 1
               if (row[5]) { 
-                if (row[6]) lastKecPrio1 = normalisasiTeks(row[6]);
                 currentSchool.prioritas_1.push({
                   rt: String(row[3] || '').trim().padStart(3, '0'),
                   rw: String(row[4] || '').trim().padStart(3, '0'),
-                  kelurahan: normalisasiTeks(row[5]),
-                  kecamatan: lastKecPrio1 
+                  kelurahan: normalisasiTeks(row[5])
                 });
               }
 
               if (file.jenjang === 'SD') {
-                // --- PRIORITAS 2 SD ---
+                // Mapping Prioritas 2 SD
                 if (row[7]) {
-                  if (row[8]) lastKecPrio2 = normalisasiTeks(row[8]);
                   currentSchool.prioritas_2.push({
-                    kelurahan: normalisasiTeks(row[7]),
-                    kecamatan: lastKecPrio2
+                    kelurahan: normalisasiTeks(row[7])
                   });
                 }
               } else {
-                // --- PRIORITAS 2 SMP/SMA ---
+                // Mapping Prioritas 2 SMP/SMA
                 if (row[9]) {
-                  if (row[10]) lastKecPrio2 = normalisasiTeks(row[10]);
                   currentSchool.prioritas_2.push({
                     rt: String(row[7] || '').trim().padStart(3, '0'),
                     rw: String(row[8] || '').trim().padStart(3, '0'),
-                    kelurahan: normalisasiTeks(row[9]),
-                    kecamatan: lastKecPrio2
+                    kelurahan: normalisasiTeks(row[9])
                   });
                 }
-                // --- PRIORITAS 3 SMP/SMA ---
+                // Mapping Prioritas 3 SMP/SMA
                 if (row[11]) {
-                  if (row[12]) lastKecPrio3 = normalisasiTeks(row[12]);
                   currentSchool.prioritas_3.push({
-                    kelurahan: normalisasiTeks(row[11]),
-                    kecamatan: lastKecPrio3
+                    kelurahan: normalisasiTeks(row[11])
                   });
                 }
               }
             }
           }
-          return parsedSchools;
+          return { parsedSchools, localKelurahanMap };
         });
 
         const results = await Promise.all(fetchPromises);
-        setDataSekolah(results.flat());
+        
+        // Gabungkan semua sekolah
+        const mergedSchools = results.flatMap(r => r.parsedSchools);
+        
+        // Gabungkan semua kelurahan dari berbagai file excel
+        const finalKelurahanMap = new Map();
+        results.forEach(r => {
+          r.localKelurahanMap.forEach((cleanName, key) => {
+            if (!finalKelurahanMap.has(key)) {
+              finalKelurahanMap.set(key, cleanName);
+            } else if (cleanName.includes(' ') && !finalKelurahanMap.get(key).includes(' ')) {
+              finalKelurahanMap.set(key, cleanName);
+            }
+          });
+        });
+
+        // Jadikan array dan urutkan sesuai abjad (A-Z)
+        const sortedKelurahan = Array.from(finalKelurahanMap.values()).sort();
+
+        setDataSekolah(mergedSchools);
+        setListKelurahan(sortedKelurahan);
         setIsLoading(false);
 
       } catch (error) {
@@ -134,12 +189,11 @@ export default function DashboardZonasiTerpadu() {
     setFormData({ ...formData, [e.target.name]: e.target.value.toUpperCase() });
   };
 
-  // Algoritma Pencarian & Skor Kedekatan
+  // Algoritma Pencarian & Skor Kedekatan (Versi Baru Tanpa Kecamatan)
   const cariZonasi = (e) => {
     e.preventDefault();
     const result = [];
     
-    const searchKec = normalisasiTeks(formData.kecamatan);
     const searchKel = normalisasiTeks(formData.kelurahan);
     const inputRT = String(formData.rt).padStart(3, '0');
     const inputRW = String(formData.rw).padStart(3, '0');
@@ -148,37 +202,30 @@ export default function DashboardZonasiTerpadu() {
       let skorKedekatan = 0;
       const alamatNormal = normalisasiTeks(sekolah.alamat);
       
+      // Jika kelurahan sekolah sama persis dengan domisili pencari
       if (alamatNormal.includes(searchKel)) {
-        skorKedekatan = 2; // Satu Kelurahan
-      } else if (alamatNormal.includes(searchKec)) {
-        skorKedekatan = 1; // Satu Kecamatan
+        skorKedekatan = 2; 
       }
 
-      const isPrio1 = sekolah.prioritas_1.some(p => 
-        p.kecamatan === searchKec && p.kelurahan === searchKel && p.rt === inputRT && p.rw === inputRW
-      );
+      const isPrio1 = sekolah.prioritas_1.some(p => p.kelurahan === searchKel && p.rt === inputRT && p.rw === inputRW);
       if (isPrio1) {
         result.push({ ...sekolah, status: 'Prioritas 1', badge: 'bg-success', skorKedekatan });
         return; 
       }
 
-      const isPrio2 = sekolah.prioritas_2.some(p => 
-        p.kecamatan === searchKec && p.kelurahan === searchKel && (p.rt ? p.rt === inputRT : true) && (p.rw ? p.rw === inputRW : true)
-      );
+      const isPrio2 = sekolah.prioritas_2.some(p => p.kelurahan === searchKel && (p.rt ? p.rt === inputRT : true) && (p.rw ? p.rw === inputRW : true));
       if (isPrio2) {
         result.push({ ...sekolah, status: 'Prioritas 2', badge: 'bg-primary', skorKedekatan });
         return;
       }
 
-      const isPrio3 = sekolah.prioritas_3.some(p => 
-        p.kecamatan === searchKec && (p.kelurahan ? p.kelurahan === searchKel : true)
-      );
+      const isPrio3 = sekolah.prioritas_3.some(p => p.kelurahan === searchKel);
       if (isPrio3) {
         result.push({ ...sekolah, status: 'Prioritas 3', badge: 'bg-secondary', skorKedekatan });
       }
     });
 
-    // Urutkan: Prio (1,2,3) -> Skor Jarak (2,1,0) -> Jenjang (SD, SMP, SMA)
+    // Urutkan: Prio (1,2,3) -> Skor Jarak (2,0) -> Jenjang (SD, SMP, SMA)
     result.sort((a, b) => {
       if (a.status < b.status) return -1;
       if (a.status > b.status) return 1;
@@ -195,33 +242,35 @@ export default function DashboardZonasiTerpadu() {
       <div className="row justify-content-center">
         <div className="col-lg-11">
           
-          {/* HEADER */}
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <h4 className="text-dark fw-bold mb-0">Portal Manajemen Zonasi Pendidikan</h4>
+          {/* HEADER RESPONSIF */}
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 mb-4 text-center text-md-start">
+            <h4 className="text-dark fw-bold mb-0 fs-5 fs-md-4 lh-base">
+              Portal Manajemen Zonasi Pendidikan
+            </h4>
             {isLoading ? (
-              <span className="badge bg-warning text-dark py-2 px-3 border rounded-0">
+              <span className="badge bg-warning text-dark py-2 px-3 border rounded-0 w-100 w-md-auto text-wrap">
                 Memuat Database PMB...
               </span>
             ) : (
-              <span className="badge bg-white text-success py-2 px-3 border border-success rounded-0 shadow-sm">
+              <span className="badge bg-white text-success py-2 px-3 border border-success rounded-0 shadow-sm w-100 w-md-auto text-wrap">
                 ✅ Data Siap ({dataSekolah.length} Sekolah Terindeks)
               </span>
             )}
           </div>
 
-          {/* NAVIGASI TAB */}
-          <ul className="nav nav-tabs mb-4 border-bottom-2">
-            <li className="nav-item">
+          {/* NAVIGASI TAB RESPONSIF */}
+          <ul className="nav nav-pills flex-column flex-sm-row mb-4 gap-2 border-bottom pb-3">
+            <li className="nav-item flex-sm-fill">
               <button 
-                className={`nav-link text-dark fw-semibold rounded-top-2 px-4 py-3 ${activeTab === 'dashboard' ? 'active bg-white border-bottom-0 shadow-sm' : 'bg-light text-muted'}`}
+                className={`nav-link text-dark fw-semibold rounded-2 px-3 py-2 w-100 ${activeTab === 'dashboard' ? 'active bg-white border shadow-sm' : 'bg-light text-muted border'}`}
                 onClick={() => setActiveTab('dashboard')}
               >
                 🔍 Pencarian Zonasi Wilayah
               </button>
             </li>
-            <li className="nav-item ms-2">
+            <li className="nav-item flex-sm-fill">
               <button 
-                className={`nav-link text-dark fw-semibold rounded-top-2 px-4 py-3 ${activeTab === 'panduan' ? 'active bg-white border-bottom-0 shadow-sm' : 'bg-light text-muted'}`}
+                className={`nav-link text-dark fw-semibold rounded-2 px-3 py-2 w-100 ${activeTab === 'panduan' ? 'active bg-white border shadow-sm' : 'bg-light text-muted border'}`}
                 onClick={() => setActiveTab('panduan')}
               >
                 📖 Buku Saku
@@ -240,26 +289,47 @@ export default function DashboardZonasiTerpadu() {
                 </div>
                 <div className="card-body bg-white p-4">
                   <form onSubmit={cariZonasi}>
-                    <div className="row g-4">
-                      <div className="col-md-3">
-                        <label className="form-label text-secondary small fw-bold">KECAMATAN</label>
-                        <input type="text" className="form-control rounded-0 p-2" name="kecamatan" value={formData.kecamatan} onChange={handleChange} placeholder="Contoh: KRAMAT JATI" required disabled={isLoading} />
-                      </div>
-                      <div className="col-md-3">
+                    <div className="row g-4 justify-content-center">
+                     <div className="col-md-4 position-relative">
                         <label className="form-label text-secondary small fw-bold">KELURAHAN</label>
-                        <input type="text" className="form-control rounded-0 p-2" name="kelurahan" value={formData.kelurahan} onChange={handleChange} placeholder="Contoh: CAWANG" required disabled={isLoading} />
+                        <input 
+                          type="text" 
+                          className="form-control rounded-0 p-2 border-secondary" 
+                          name="kelurahan" 
+                          value={formData.kelurahan} 
+                          onChange={handleKelurahanChange} 
+                          placeholder="Ketik min. 3 huruf (Cth: CAW)..." 
+                          required 
+                          disabled={isLoading} 
+                          autoComplete="off"
+                        />
+                        {/* Dropdown Autocomplete Muncul di Sini */}
+                        {showSuggestions && filteredKelurahan.length > 0 && (
+                          <ul className="list-group position-absolute w-100 shadow-lg" style={{ zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+                            {filteredKelurahan.map((kel, idx) => (
+                              <li 
+                                key={idx} 
+                                className="list-group-item list-group-item-action small py-2" 
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handleSelectKelurahan(kel)}
+                              >
+                                {kel}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
-                      <div className="col-md-3">
-                        <label className="form-label text-secondary small fw-bold">RT</label>
-                        <input type="number" className="form-control rounded-0 p-2" name="rt" value={formData.rt} onChange={handleChange} placeholder="3" required disabled={isLoading} />
+                      <div className="col-md-4">
+                        <label className="form-label text-secondary small fw-bold">RUKUN TETANGGA (RT)</label>
+                        <input type="number" className="form-control rounded-0 p-2 border-secondary" name="rt" value={formData.rt} onChange={handleChange} placeholder="Contoh: 3" required disabled={isLoading} />
                       </div>
-                      <div className="col-md-3">
-                        <label className="form-label text-secondary small fw-bold">RW</label>
-                        <input type="number" className="form-control rounded-0 p-2" name="rw" value={formData.rw} onChange={handleChange} placeholder="4" required disabled={isLoading} />
+                      <div className="col-md-4">
+                        <label className="form-label text-secondary small fw-bold">RUKUN WARGA (RW)</label>
+                        <input type="number" className="form-control rounded-0 p-2 border-secondary" name="rw" value={formData.rw} onChange={handleChange} placeholder="Contoh: 4" required disabled={isLoading} />
                       </div>
                     </div>
-                    <div className="mt-4 border-top pt-4">
-                      <button type="submit" className="btn btn-primary rounded-0 px-5 py-2 fw-bold" disabled={isLoading}>
+                    <div className="mt-4 border-top pt-4 text-end">
+                      <button type="submit" className="btn btn-primary rounded-0 px-5 py-2 fw-bold w-100 w-md-auto" disabled={isLoading}>
                         Proses Pengecekan Zonasi
                       </button>
                     </div>
@@ -370,10 +440,10 @@ export default function DashboardZonasiTerpadu() {
           {/* TAB 2: BUKU SAKU PETUGAS POSKO (LENGKAP)    */}
           {/* ========================================= */}
           {activeTab === 'panduan' && (
-            <div className="card shadow-sm border-0 rounded-0 bg-white p-5 mb-5">
+            <div className="card shadow-sm border-0 rounded-0 bg-white p-3 p-md-5 mb-5">
               <div className="text-center mb-5 border-bottom pb-4">
-                <h3 className="fw-bold text-dark mb-2">Buku Saku SPMB 2026</h3>
-                <p className="text-muted">Panduan Lengkap, SOP Pelayanan, Mekanisme Skoring, dan Resolusi Masalah Lapangan</p>
+                <h3 className="fw-bold text-dark mb-2 fs-4 fs-md-3">Buku Saku SPMB 2026</h3>
+                <p className="text-muted small">Panduan Lengkap, SOP Pelayanan, Mekanisme Skoring, dan Resolusi Masalah Lapangan</p>
               </div>
 
               {/* BAB 1: DEFINISI JALUR */}
@@ -382,7 +452,7 @@ export default function DashboardZonasiTerpadu() {
                 <div className="row g-4">
                   <div className="col-md-6">
                     <div className="card bg-light border-0 h-100 rounded-0 p-4 shadow-sm">
-                      <div className="fw-bold text-success mb-3 fs-5">A. Jalur Afirmasi</div>
+                      <div className="fw-bold text-success mb-3 fs-6">A. Jalur Afirmasi</div>
                       <div className="small lh-lg text-dark">
                         Jalur perlindungan/pemerataan yang disediakan untuk memberikan kesempatan lebih besar bagi anak dari keluarga tidak mampu atau kondisi tertentu.
                         <ul className="mb-0 mt-3 ps-3">
@@ -394,7 +464,7 @@ export default function DashboardZonasiTerpadu() {
                   </div>
                   <div className="col-md-6">
                     <div className="card bg-light border-0 h-100 rounded-0 p-4 shadow-sm">
-                      <div className="fw-bold text-success mb-3 fs-5">B. Jalur Domisili (Zonasi)</div>
+                      <div className="fw-bold text-success mb-3 fs-6">B. Jalur Domisili (Zonasi)</div>
                       <div className="small lh-lg text-dark">
                         Jalur yang memprioritaskan pendaftar berdasarkan kedekatan jarak dari alamat rumah (sesuai Kartu Keluarga) ke sekolah tujuan.
                         <ul className="mb-0 mt-3 ps-3">
@@ -407,7 +477,7 @@ export default function DashboardZonasiTerpadu() {
                   </div>
                   <div className="col-md-6">
                     <div className="card bg-light border-0 h-100 rounded-0 p-4 shadow-sm">
-                      <div className="fw-bold text-success mb-3 fs-5">C. Jalur Prestasi</div>
+                      <div className="fw-bold text-success mb-3 fs-6">C. Jalur Prestasi</div>
                       <div className="small lh-lg text-dark">
                         Jalur yang menyeleksi murni berdasarkan capaian nilai dan sertifikat siswa. Berlaku untuk masuk SMP, SMA, dan SMK.
                         <ul className="mb-0 mt-3 ps-3">
@@ -419,7 +489,7 @@ export default function DashboardZonasiTerpadu() {
                   </div>
                   <div className="col-md-6">
                     <div className="card bg-light border-0 h-100 rounded-0 p-4 shadow-sm">
-                      <div className="fw-bold text-success mb-3 fs-5">D. Jalur Mutasi Tugas Orang Tua & Anak Guru</div>
+                      <div className="fw-bold text-success mb-3 fs-6">D. Jalur Mutasi Tugas Orang Tua & Anak Guru</div>
                       <div className="small lh-lg text-dark">
                         Diperuntukkan bagi anak yang mengikuti perpindahan domisili/tugas orang tua/wali (misal instansi TNI/Polri, ASN, BUMN, lembaga, atau perusahaan swasta) yang pindah tugas paling lama 1 (satu) tahun sebelum hari pertama pendaftaran. Berlaku juga bagi calon murid yang merupakan anak guru/tenaga kependidikan yang mendaftar persis di sekolah tempat orang tuanya bertugas/mengajar.
                       </div>
@@ -511,8 +581,8 @@ export default function DashboardZonasiTerpadu() {
 
               {/* BAB 3: TIE-BREAKER */}
               <div className="mb-5 border-top pt-5">
-                <h5 className="fw-bold text-primary mb-4 border-start border-primary border-4 ps-3">Bagian 3 Jika Kuota Penuh</h5>
-                <p className="text-muted small mb-4">Kondisi jika terjadi saat daya tampung sekolah tersisa sedikit (misal 1 kursi), namun ada 2 pendaftar atau lebih dengan status yang sama memperebutkannya. Berikut aturan  secara hierarkis:</p>
+                <h5 className="fw-bold text-primary mb-4 border-start border-primary border-4 ps-3">Bagian 3. Jika Kuota Penuh</h5>
+                <p className="text-muted small mb-4">Kondisi jika terjadi saat daya tampung sekolah tersisa sedikit (misal 1 kursi), namun ada 2 pendaftar atau lebih dengan status yang sama memperebutkannya. Berikut aturan secara hierarkis:</p>
                 
                 <div className="row g-4">
                   <div className="col-md-12">
@@ -523,9 +593,9 @@ export default function DashboardZonasiTerpadu() {
                       <div className="card-body small lh-lg p-4">
                         <div className="fw-bold mb-2">Hierarki Penyaringan:</div>
                         <div className="bg-light p-3 border mb-3 text-dark">
-                          1. Zona Prioritas (Prio 1 > Prio 2 > Prio 3)<br/>
+                          1. Zona Prioritas (Prio 1 {'>'} Prio 2 {'>'} Prio 3)<br/>
                           2. Usia Tertua ke Termuda (Sampai hitungan hari)<br/>
-                          3. Urutan Pilihan Sekolah (Pilihan 1 > Pilihan 2)<br/>
+                          3. Urutan Pilihan Sekolah (Pilihan 1 {'>'} Pilihan 2)<br/>
                           4. Kecepatan Waktu Mendaftar
                         </div>
                         <strong>Contoh:</strong> Sisa kuota SMPN 1 adalah 1 kursi. Ada 3 pendaftar:
@@ -549,7 +619,7 @@ export default function DashboardZonasiTerpadu() {
                         <div className="fw-bold mb-2">Hierarki Penyaringan:</div>
                         <div className="bg-light p-3 border mb-3 text-dark">
                           1. Total Indeks Prestasi Akademik (Rapor + TKA dll)<br/>
-                          2. Zona Prioritas Wilayah (Prio 1 > Prio 2 > Prio 3)<br/>
+                          2. Zona Prioritas Wilayah (Prio 1 {'>'} Prio 2 {'>'} Prio 3)<br/>
                           3. Usia Tertua ke Termuda<br/>
                           4. Urutan Pilihan Sekolah & Kecepatan Daftar
                         </div>
@@ -568,7 +638,7 @@ export default function DashboardZonasiTerpadu() {
               </div>
 
               {/* BAB 4: JADWAL & ALOKASI KUOTA */}
-          <div className="row g-5 mb-5 border-top pt-5">
+              <div className="row g-5 mb-5 border-top pt-5">
                 <div className="col-lg-6">
                   <h5 className="fw-bold text-primary mb-4 border-start border-primary border-4 ps-3">Bagian 4. Jadwal SPMB 2026</h5>
                   <div className="card border-0 bg-light p-4 rounded-0 shadow-sm small">
