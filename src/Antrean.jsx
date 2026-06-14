@@ -4,8 +4,8 @@ export default function Antrean() {
   const [antrean, setAntrean] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // GANTI DENGAN URL BACKEND NODE.JS KAMU YANG ONLINE NANTI
-const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
+  // GANTI DENGAN URL BACKEND NODE.JS KAMU YANG ONLINE
+ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
 
   const fetchAntrean = async () => {
     try {
@@ -25,37 +25,74 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
     return () => clearInterval(interval);
   }, []);
 
+  // ==========================================
+  // FUNGSI SUARA AI (TEXT TO SPEECH)
+  // ==========================================
+  const panggilSuara = (nomor, meja) => {
+    if ('speechSynthesis' in window) {
+      // Batalkan suara sebelumnya agar tidak tumpang tindih jika di-klik cepat
+      window.speechSynthesis.cancel();
+
+      // Format kalimat yang dibaca AI (menggunakan koma agar ada jeda natural)
+      const teks = `Nomor antrean, ${nomor}, silakan menuju ke, ${meja}`;
+      const utterance = new SpeechSynthesisUtterance(teks);
+      
+      // Pengaturan Suara (Bahasa Indonesia)
+      utterance.lang = 'id-ID';
+      utterance.rate = 0.85; // Kecepatan baca (diperlambat sedikit agar jelas)
+      utterance.pitch = 1;   // Nada suara normal
+
+      // Mainkan suara
+      window.speechSynthesis.speak(utterance);
+    } else {
+      console.warn('Browser Anda tidak mendukung fitur suara AI Text-to-Speech.');
+    }
+  };
+
   const handleUpdate = async (id, action) => {
-    // 1. UPDATE LAYAR LANGSUNG (TanPA DELAY)
+    let newNomorPanggil = null;
+    let mejaPanggil = null;
+
+    // 1. UPDATE LAYAR LANGSUNG (Tanpa Delay)
     setAntrean(prev => {
       const targetDesk = prev.find(item => item.id === id);
       if (!targetDesk) return prev;
 
-      // Cari nomor tertinggi di kategori yang sama (Sudin / Dukcapil)
       const maxNomor = Math.max(...prev.filter(i => i.kategori === targetDesk.kategori).map(i => i.nomor_sekarang));
 
       return prev.map(item => {
         if (item.id === id) {
           const newNomor = action === 'next' ? maxNomor + 1 : Math.max(0, item.nomor_sekarang - 1);
+          
+          // Simpan data untuk dibaca oleh suara AI
+          if (action === 'next') {
+            newNomorPanggil = newNomor;
+            mejaPanggil = item.nama_meja;
+          }
+
           return { ...item, nomor_sekarang: newNomor };
         }
         return item;
       });
     });
 
-    // 2. KIRIM KE DATABASE (BACKEND)
+    // 2. JALANKAN SUARA AI JIKA TOMBOL "PANGGIL" DITEKAN
+    if (action === 'next' && newNomorPanggil !== null) {
+      panggilSuara(newNomorPanggil, mejaPanggil);
+    }
+
+    // 3. KIRIM KE DATABASE (BACKEND)
     try {
       const response = await fetch(`${API_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action })
       });
-      // 3. UPDATE DATA RESMI DARI DATABASE KE LAYAR
       const updatedRow = await response.json();
       setAntrean(prev => prev.map(item => item.id === id ? updatedRow : item));
     } catch (error) {
       console.error("Gagal update data:", error);
-      fetchAntrean(); // Jika gagal jaringan, kembalikan ke data asli di database
+      fetchAntrean(); // Rollback jika error jaringan
     }
   };
 
@@ -127,7 +164,7 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
           <span className="badge bg-danger p-2 me-2 blink">LIVE</span>
           <div>
             <h6 className="fw-bold text-dark mb-0">PANEL OPERATOR</h6>
-            <span className="text-muted" style={{fontSize: '0.75rem'}}>Klik (+) untuk memanggil antrean selanjutnya ke meja Anda.</span>
+            <span className="text-muted" style={{fontSize: '0.75rem'}}>Klik (+) untuk memanggil antrean selanjutnya (Suara otomatis menyala).</span>
           </div>
         </div>
         
