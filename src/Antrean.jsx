@@ -135,9 +135,7 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
             checked={isTvMode}
             onChange={toggleTvMode}
           />
-          <label className="form-check-label text-warning fw-bold ms-2" htmlFor="tvModeSwitch" style={{cursor: 'pointer'}}>
-            🔊 MODE SUARA TV
-          </label>
+          
         </div>
       </div>
       
