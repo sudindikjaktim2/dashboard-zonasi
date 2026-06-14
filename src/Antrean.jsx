@@ -28,60 +28,48 @@ export default function Antrean() {
   // ==========================================
   // FUNGSI SUARA AI (TEXT TO SPEECH)
   // ==========================================
-  const panggilSuara = (nomor, meja) => {
+ const panggilSuara = (nomor, meja) => {
     if ('speechSynthesis' in window) {
-      // Batalkan suara sebelumnya agar tidak tumpang tindih jika di-klik cepat
-      window.speechSynthesis.cancel();
-
-      // Format kalimat yang dibaca AI (menggunakan koma agar ada jeda natural)
       const teks = `Nomor antrean, ${nomor}, silakan menuju ke, ${meja}`;
       const utterance = new SpeechSynthesisUtterance(teks);
       
       // Pengaturan Suara (Bahasa Indonesia)
       utterance.lang = 'id-ID';
-      utterance.rate = 0.85; // Kecepatan baca (diperlambat sedikit agar jelas)
-      utterance.pitch = 1;   // Nada suara normal
+      utterance.rate = 0.85; // Kecepatan diperlambat sedikit agar natural
+      utterance.pitch = 1;   
 
+      // Trik untuk mencegah bug suara tiba-tiba hilang/bisu di Google Chrome
+      window.utterance = utterance; 
+      
       // Mainkan suara
-      window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.speak(window.utterance);
     } else {
       console.warn('Browser Anda tidak mendukung fitur suara AI Text-to-Speech.');
     }
   };
 
   const handleUpdate = async (id, action) => {
-    let newNomorPanggil = null;
-    let mejaPanggil = null;
+    // 1. CARI NOMOR BARU DULUAN SECARA SINKRON (Jangan di dalam setAntrean)
+    const targetDesk = antrean.find(item => item.id === id);
+    if (!targetDesk) return;
 
-    // 1. UPDATE LAYAR LANGSUNG (Tanpa Delay)
-    setAntrean(prev => {
-      const targetDesk = prev.find(item => item.id === id);
-      if (!targetDesk) return prev;
+    // Cari nomor tertinggi di kategori meja tersebut
+    const maxNomor = Math.max(...antrean.filter(i => i.kategori === targetDesk.kategori).map(i => i.nomor_sekarang));
+    
+    // Tentukan nomor panggil yang baru
+    const newNomor = action === 'next' ? maxNomor + 1 : Math.max(0, targetDesk.nomor_sekarang - 1);
 
-      const maxNomor = Math.max(...prev.filter(i => i.kategori === targetDesk.kategori).map(i => i.nomor_sekarang));
-
-      return prev.map(item => {
-        if (item.id === id) {
-          const newNomor = action === 'next' ? maxNomor + 1 : Math.max(0, item.nomor_sekarang - 1);
-          
-          // Simpan data untuk dibaca oleh suara AI
-          if (action === 'next') {
-            newNomorPanggil = newNomor;
-            mejaPanggil = item.nama_meja;
-          }
-
-          return { ...item, nomor_sekarang: newNomor };
-        }
-        return item;
-      });
-    });
-
-    // 2. JALANKAN SUARA AI JIKA TOMBOL "PANGGIL" DITEKAN
-    if (action === 'next' && newNomorPanggil !== null) {
-      panggilSuara(newNomorPanggil, mejaPanggil);
+    // 2. JALANKAN SUARA LANGSUNG SAAT TOMBOL DIKLIK (Mencegah blokir browser)
+    if (action === 'next') {
+      panggilSuara(newNomor, targetDesk.nama_meja);
     }
 
-    // 3. KIRIM KE DATABASE (BACKEND)
+    // 3. UPDATE LAYAR LANGSUNG (Optimistic Update tanpa delay)
+    setAntrean(prev => prev.map(item => 
+      item.id === id ? { ...item, nomor_sekarang: newNomor } : item
+    ));
+
+    // 4. KIRIM KE DATABASE (BACKEND)
     try {
       const response = await fetch(`${API_URL}/update`, {
         method: 'POST',
@@ -89,10 +77,12 @@ export default function Antrean() {
         body: JSON.stringify({ id, action })
       });
       const updatedRow = await response.json();
+      
+      // Update data resmi dari database ke layar untuk memastikan valid
       setAntrean(prev => prev.map(item => item.id === id ? updatedRow : item));
     } catch (error) {
-      console.error("Gagal update data:", error);
-      fetchAntrean(); // Rollback jika error jaringan
+      console.error("Gagal update data ke database:", error);
+      fetchAntrean(); // Rollback ke data asli jika error jaringan
     }
   };
 
