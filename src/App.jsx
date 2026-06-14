@@ -15,42 +15,47 @@ const bersihkanNamaKelurahan = (teks) => {
 };
 
 export default function DashboardZonasiTerpadu() {
-  // State Management Utama
+  // ==========================================
+  // STATE MANAGEMENT UTAMA
+  // ==========================================
   const [dataSekolah, setDataSekolah] = useState([]);
-  const [listKelurahan, setListKelurahan] = useState([]); // State baru untuk Dropdown
+  const [listKelurahan, setListKelurahan] = useState([]);
   const [formData, setFormData] = useState({ kelurahan: '', rt: '', rw: '' });
   const [hasilPencarian, setHasilPencarian] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard'); 
-  // State khusus untuk fitur Autocomplete Kelurahan
+  
+  // State Autocomplete Kelurahan
   const [filteredKelurahan, setFilteredKelurahan] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   
-  // State untuk mengontrol Accordion FAQ secara mandiri
+  // State Accordion FAQ
   const [openFaqs, setOpenFaqs] = useState({});
   const toggleFaq = (id) => {
     setOpenFaqs(prev => ({ ...prev, [id]: !prev[id] }));
   };
-// Handler khusus untuk Autocomplete Kelurahan (Muncul setelah 3 huruf)
-  const handleKelurahanChange = (e) => {
-    const val = e.target.value.toUpperCase();
-    setFormData({ ...formData, kelurahan: val });
-    
-    if (val.length >= 3) {
-      const filtered = listKelurahan.filter(k => k.includes(val));
-      setFilteredKelurahan(filtered);
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
-    }
+
+  // State Nomor Antrean Posko
+  const [antrian, setAntrian] = useState({
+    meja1: 2,
+    meja2: 4,
+    meja3: 7,
+    meja4: 10,
+    meja5: 3 // Khusus Dukcapil
+  });
+
+  // Fungsi Update Antrean Operator
+  const updateAntrian = (meja, delta) => {
+    setAntrian(prev => ({
+      ...prev,
+      [meja]: Math.max(0, prev[meja] + delta) // Mencegah nomor minus
+    }));
   };
 
-  const handleSelectKelurahan = (kel) => {
-    setFormData({ ...formData, kelurahan: kel });
-    setShowSuggestions(false); // Tutup dropdown setelah dipilih
-  };
-  // Proses Load & Parse Data Excel
- useEffect(() => {
+  // ==========================================
+  // PROSES LOAD & PARSE DATA EXCEL ZONASI
+  // ==========================================
+  useEffect(() => {
     const loadAllExcelFiles = async () => {
       const fileConfigs = [
         { jenjang: 'SD', url: '/WILAYAH_SD_T1.xlsx' },
@@ -69,7 +74,7 @@ export default function DashboardZonasiTerpadu() {
           const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           const parsedSchools = [];
-          const localKelurahanMap = new Map(); // Menggunakan Map untuk mencegah duplikat spasi
+          const localKelurahanMap = new Map(); 
           let currentSchool = null;
 
           for (let i = 0; i < rawRows.length; i++) {
@@ -92,17 +97,14 @@ export default function DashboardZonasiTerpadu() {
             }
 
             if (currentSchool) {
-              // Fungsi pintar untuk menyaring kelurahan ke Dropdown
               const tambahKelurahan = (teks) => {
                 if (!teks) return;
                 const clean = bersihkanNamaKelurahan(teks);
-                const key = normalisasiTeks(clean); // Cth: "BIDARACINA" (tanpa spasi)
+                const key = normalisasiTeks(clean); 
                 
                 if (!localKelurahanMap.has(key)) {
                   localKelurahanMap.set(key, clean);
                 } else {
-                  // Jika yang tersimpan sebelumnya gak ada spasi (BIDARACINA), 
-                  // timpa dengan versi yang ada spasinya (BIDARA CINA) agar dropdown rapi.
                   if (clean.includes(' ') && !localKelurahanMap.get(key).includes(' ')) {
                     localKelurahanMap.set(key, clean);
                   }
@@ -114,7 +116,6 @@ export default function DashboardZonasiTerpadu() {
               if (row[9]) tambahKelurahan(row[9]);
               if (row[11]) tambahKelurahan(row[11]);
 
-              // Mapping Prioritas 1
               if (row[5]) { 
                 currentSchool.prioritas_1.push({
                   rt: String(row[3] || '').trim().padStart(3, '0'),
@@ -124,14 +125,12 @@ export default function DashboardZonasiTerpadu() {
               }
 
               if (file.jenjang === 'SD') {
-                // Mapping Prioritas 2 SD
                 if (row[7]) {
                   currentSchool.prioritas_2.push({
                     kelurahan: normalisasiTeks(row[7])
                   });
                 }
               } else {
-                // Mapping Prioritas 2 SMP/SMA
                 if (row[9]) {
                   currentSchool.prioritas_2.push({
                     rt: String(row[7] || '').trim().padStart(3, '0'),
@@ -139,7 +138,6 @@ export default function DashboardZonasiTerpadu() {
                     kelurahan: normalisasiTeks(row[9])
                   });
                 }
-                // Mapping Prioritas 3 SMP/SMA
                 if (row[11]) {
                   currentSchool.prioritas_3.push({
                     kelurahan: normalisasiTeks(row[11])
@@ -152,11 +150,8 @@ export default function DashboardZonasiTerpadu() {
         });
 
         const results = await Promise.all(fetchPromises);
-        
-        // Gabungkan semua sekolah
         const mergedSchools = results.flatMap(r => r.parsedSchools);
         
-        // Gabungkan semua kelurahan dari berbagai file excel
         const finalKelurahanMap = new Map();
         results.forEach(r => {
           r.localKelurahanMap.forEach((cleanName, key) => {
@@ -168,7 +163,6 @@ export default function DashboardZonasiTerpadu() {
           });
         });
 
-        // Jadikan array dan urutkan sesuai abjad (A-Z)
         const sortedKelurahan = Array.from(finalKelurahanMap.values()).sort();
 
         setDataSekolah(mergedSchools);
@@ -184,12 +178,31 @@ export default function DashboardZonasiTerpadu() {
     loadAllExcelFiles();
   }, []);
 
-  // Handler Form
+  // ==========================================
+  // HANDLER PENCARIAN & ZONASI
+  // ==========================================
+  const handleKelurahanChange = (e) => {
+    const val = e.target.value.toUpperCase();
+    setFormData({ ...formData, kelurahan: val });
+    
+    if (val.length >= 3) {
+      const filtered = listKelurahan.filter(k => k.includes(val));
+      setFilteredKelurahan(filtered);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSelectKelurahan = (kel) => {
+    setFormData({ ...formData, kelurahan: kel });
+    setShowSuggestions(false); 
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value.toUpperCase() });
   };
 
-  // Algoritma Pencarian & Skor Kedekatan (Versi Baru Tanpa Kecamatan)
   const cariZonasi = (e) => {
     e.preventDefault();
     const result = [];
@@ -202,7 +215,6 @@ export default function DashboardZonasiTerpadu() {
       let skorKedekatan = 0;
       const alamatNormal = normalisasiTeks(sekolah.alamat);
       
-      // Jika kelurahan sekolah sama persis dengan domisili pencari
       if (alamatNormal.includes(searchKel)) {
         skorKedekatan = 2; 
       }
@@ -225,7 +237,6 @@ export default function DashboardZonasiTerpadu() {
       }
     });
 
-    // Urutkan: Prio (1,2,3) -> Skor Jarak (2,0) -> Jenjang (SD, SMP, SMA)
     result.sort((a, b) => {
       if (a.status < b.status) return -1;
       if (a.status > b.status) return 1;
@@ -270,10 +281,18 @@ export default function DashboardZonasiTerpadu() {
             </li>
             <li className="nav-item flex-sm-fill">
               <button 
+                className={`nav-link text-dark fw-semibold rounded-2 px-3 py-2 w-100 ${activeTab === 'antrian' ? 'active bg-white border shadow-sm' : 'bg-light text-muted border'}`}
+                onClick={() => setActiveTab('antrian')}
+              >
+                🎫 Layar Antrean Posko
+              </button>
+            </li>
+            <li className="nav-item flex-sm-fill">
+              <button 
                 className={`nav-link text-dark fw-semibold rounded-2 px-3 py-2 w-100 ${activeTab === 'panduan' ? 'active bg-white border shadow-sm' : 'bg-light text-muted border'}`}
                 onClick={() => setActiveTab('panduan')}
               >
-                📖 Buku Saku
+                📖 Buku Saku Petugas
               </button>
             </li>
           </ul>
@@ -291,7 +310,7 @@ export default function DashboardZonasiTerpadu() {
                   <form onSubmit={cariZonasi}>
                     <div className="row g-4 justify-content-center">
                      <div className="col-md-4 position-relative">
-                        <label className="form-label text-secondary small fw-bold">KELURAHAN</label>
+                        <label className="form-label text-secondary small fw-bold">KELURAHAN DOMISILI</label>
                         <input 
                           type="text" 
                           className="form-control rounded-0 p-2 border-secondary" 
@@ -303,7 +322,6 @@ export default function DashboardZonasiTerpadu() {
                           disabled={isLoading} 
                           autoComplete="off"
                         />
-                        {/* Dropdown Autocomplete Muncul di Sini */}
                         {showSuggestions && filteredKelurahan.length > 0 && (
                           <ul className="list-group position-absolute w-100 shadow-lg" style={{ zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
                             {filteredKelurahan.map((kel, idx) => (
@@ -339,7 +357,6 @@ export default function DashboardZonasiTerpadu() {
 
               {hasilPencarian && (
                 <>
-                  {/* SUMMARY CARDS */}
                   <div className="row g-4 mb-4">
                     <div className="col-md-4">
                       <div className="card border-0 shadow-sm rounded-0 bg-info bg-opacity-10 border-start border-info border-4">
@@ -373,7 +390,6 @@ export default function DashboardZonasiTerpadu() {
                     </div>
                   </div>
 
-                  {/* TABEL HASIL PENCARIAN */}
                   <div className="card shadow-sm border-0 rounded-0">
                     <div className="card-header bg-white border-bottom rounded-0 d-flex justify-content-between align-items-center py-3">
                       <h6 className="mb-0 text-dark fw-bold">Rincian Pemetaan Wilayah Berdasarkan Dokumen</h6>
@@ -437,7 +453,141 @@ export default function DashboardZonasiTerpadu() {
           )}
 
           {/* ========================================= */}
-          {/* TAB 2: BUKU SAKU PETUGAS POSKO (LENGKAP)    */}
+          {/* TAB 2: LAYAR ANTREAN POSKO                  */}
+          {/* ========================================= */}
+          {activeTab === 'antrian' && (
+            <div className="card shadow border-0 rounded-0 bg-white mb-5 p-0 overflow-hidden">
+              <div className="bg-dark text-white text-center py-4 border-bottom border-4 border-warning">
+                <h2 className="fw-bold mb-1 tracking-wider text-uppercase">MONITOR ANTRIAN POSKO</h2>
+                <p className="mb-0 text-white-50">Sistem Penerimaan Murid Baru 2026</p>
+              </div>
+              
+              <div className="card-body p-3 p-md-5 bg-light">
+                
+                {/* --- SEKSI POSKO SUDIN --- */}
+                <div className="mb-5">
+                  <h5 className="fw-bold text-primary mb-4 text-center border-bottom border-primary pb-3 d-inline-block mx-auto">
+                    POSKO SUKU DINAS PENDIDIKAN
+                  </h5>
+                  <div className="row g-4 justify-content-center">
+                    {/* Meja 1 */}
+                    <div className="col-6 col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
+                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 1</div>
+                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
+                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
+                            {antrian.meja1.toString().padStart(3, '0')}
+                          </h1>
+                        </div>
+                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
+                      </div>
+                    </div>
+                    {/* Meja 2 */}
+                    <div className="col-6 col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
+                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 2</div>
+                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
+                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
+                            {antrian.meja2.toString().padStart(3, '0')}
+                          </h1>
+                        </div>
+                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
+                      </div>
+                    </div>
+                    {/* Meja 3 */}
+                    <div className="col-6 col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
+                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 3</div>
+                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
+                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
+                            {antrian.meja3.toString().padStart(3, '0')}
+                          </h1>
+                        </div>
+                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
+                      </div>
+                    </div>
+                    {/* Meja 4 */}
+                    <div className="col-6 col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
+                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 4</div>
+                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
+                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
+                            {antrian.meja4.toString().padStart(3, '0')}
+                          </h1>
+                        </div>
+                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* --- SEKSI POSKO DUKCAPIL --- */}
+                <div className="mb-4">
+                  <h5 className="fw-bold text-success mb-4 text-center border-bottom border-success pb-3 d-inline-block mx-auto">
+                    POSKO DUKCAPIL (KK & NIK)
+                  </h5>
+                  <div className="row justify-content-center">
+                    {/* Meja 5 */}
+                    <div className="col-8 col-md-4">
+                      <div className="card border-0 shadow rounded-4 h-100 text-center overflow-hidden">
+                        <div className="bg-success text-white py-2 fw-bold fs-5">MEJA 5</div>
+                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
+                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
+                            {antrian.meja5.toString().padStart(3, '0')}
+                          </h1>
+                        </div>
+                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Verifikasi Dokumen</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* --- PANEL OPERATOR (ADMIN) --- */}
+              <div className="card-footer bg-white border-top border-3 p-4">
+                <div className="d-flex align-items-center mb-3">
+                  <span className="badge bg-danger p-2 me-2">LIVE</span>
+                  <h6 className="fw-bold text-dark mb-0">PANEL OPERATOR (Ubah Nomor Antrean)</h6>
+                </div>
+                <div className="row g-3">
+                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
+                    <span className="fw-bold me-3 text-secondary">MEJA 1 :</span>
+                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja1', -1)}>-</button>
+                    <span className="mx-3 fw-bold fs-5">{antrian.meja1}</span>
+                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja1', 1)}>+</button>
+                  </div>
+                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
+                    <span className="fw-bold me-3 text-secondary">MEJA 2 :</span>
+                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja2', -1)}>-</button>
+                    <span className="mx-3 fw-bold fs-5">{antrian.meja2}</span>
+                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja2', 1)}>+</button>
+                  </div>
+                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
+                    <span className="fw-bold me-3 text-secondary">MEJA 3 :</span>
+                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja3', -1)}>-</button>
+                    <span className="mx-3 fw-bold fs-5">{antrian.meja3}</span>
+                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja3', 1)}>+</button>
+                  </div>
+                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
+                    <span className="fw-bold me-3 text-secondary">MEJA 4 :</span>
+                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja4', -1)}>-</button>
+                    <span className="mx-3 fw-bold fs-5">{antrian.meja4}</span>
+                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja4', 1)}>+</button>
+                  </div>
+                  <div className="col-12 col-md-auto d-flex align-items-center border border-success rounded px-3 py-2 bg-success bg-opacity-10">
+                    <span className="fw-bold me-3 text-success">MEJA 5 (DKC) :</span>
+                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja5', -1)}>-</button>
+                    <span className="mx-3 fw-bold fs-5">{antrian.meja5}</span>
+                    <button className="btn btn-sm btn-success px-3 fw-bold" onClick={() => updateAntrian('meja5', 1)}>+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================= */}
+          {/* TAB 3: BUKU SAKU PETUGAS POSKO (LENGKAP)    */}
           {/* ========================================= */}
           {activeTab === 'panduan' && (
             <div className="card shadow-sm border-0 rounded-0 bg-white p-3 p-md-5 mb-5">
@@ -794,10 +944,12 @@ export default function DashboardZonasiTerpadu() {
 
               {/* BAB 7: TROUBLESHOOTING GRUP WA */}
               <div className="mb-2 border-top pt-5">
-                <h5 className="fw-bold text-success mb-4 border-start border-success border-4 ps-3">Bagian 7. FAQ</h5>                
+                <h5 className="fw-bold text-success mb-4 border-start border-success border-4 ps-3">Bagian 7. FAQ & Template Laporan Posko (Wajib Baca)</h5>                
+                <p className="text-muted small mb-4">Pilih jenis kendala warga di bawah ini untuk melihat panduan jawaban dan *template* laporan yang tinggal di-*copy-paste* ke grup WhatsApp Sidanira/Dinas.</p>
+                
                 <div className="accordion rounded-0 shadow-sm" id="faqAccordion">
                   
-                  {/* Item 1 */}
+                  {/* Kasus 1: NIK Terpakai / Siswa Sudah Memiliki Akun */}
                   <div className="accordion-item rounded-0 border-start-0 border-end-0">
                     <h2 className="accordion-header">
                       <button 
@@ -806,22 +958,32 @@ export default function DashboardZonasiTerpadu() {
                         onClick={() => toggleFaq(1)}
                         style={{backgroundColor: openFaqs[1] ? '#f8f9fa' : 'white'}}
                       >
-                        🔴 "Gagal buat akun, sistem bilang NIK terpakai orang lain!"
+                        🔴 NIK Terpakai Orang Lain / Muncul Tulisan "Siswa Sudah Memiliki Akun"
                       </button>
                     </h2>
                     <div className={`accordion-collapse collapse ${openFaqs[1] ? 'show' : ''}`}>
-                      <div className="accordion-body small lh-lg bg-white border-top">
-                        <strong>Kondisi:</strong> Biasanya NIK anak tersebut tidak sengaja salah ketik oleh orang tua lain, atau digunakan ganda.
-                        <ol className="mb-0 mt-2">
-                          <li>Orang tua murid wajib mengirim foto KK asli ke petugas posko.</li>
-                          <li>Petugas posko akan membuat laporan permohonan hapus akun</li>
-                          <li>Setelah akun di batalkan/direset, orang tua murid dapat <strong>buat pengajuan ulang dari awal</strong>.</li>
-                        </ol>
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <strong>Solusi ke Warga:</strong> 
+                        <ul className="mb-3">
+                          <li>Jika muncul <em>"Siswa Sudah Memiliki Akun"</em> padahal orang tua merasa belum bikin, coba arahkan untuk langsung <strong>Login / Aktivasi Akun</strong> terlebih dahulu (siapa tahu sebelumnya sudah pernah didaftarkan pihak sekolah asal).</li>
+                          <li>Jika NIK benar-benar dipakai anak lain dengan nama berbeda, minta foto KK asli dari warga. Minta mereka menunggu sampai akun bodong tersebut dibatalkan/direset oleh tim verifikator Dinas, baru mereka bisa buat pengajuan ulang.</li>
+                        </ul>
+                        <strong>Template Laporan ke Grup Posko:</strong>
+                        <div className="bg-dark text-white p-3 rounded mt-2 font-monospace position-relative" style={{fontSize: '0.8rem'}}>
+                          *PERMOHONAN HAPUS AKUN SPMB KARENA NIK TERPAKAI*<br/><br/>
+                          Nama Lengkap : <br/>
+                          NIK Terpakai : <br/>
+                          Tanggal Lahir : <br/>
+                          Status Ajuan Akun : (Isi jika ada, misal: Sudah Verifikasi / Belum)<br/>
+                          Jenjang yang dituju : <br/>
+                          Masalah : Mengajukan penghapusan akun dikarenakan NIK ybs digunakan oleh a.n. (Isi nama anak lain yang memakai NIK tersebut). Mohon direset.<br/><br/>
+                          POSKO PELAYANAN SPMB JT 2
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Item 2 */}
+                  {/* Kasus 2: Salah Input Data & Alamat */}
                   <div className="accordion-item rounded-0 border-start-0 border-end-0">
                     <h2 className="accordion-header">
                       <button 
@@ -830,20 +992,32 @@ export default function DashboardZonasiTerpadu() {
                         onClick={() => toggleFaq(2)}
                         style={{backgroundColor: openFaqs[2] ? '#f8f9fa' : 'white'}}
                       >
-                        🔴 "Salah input alamat KK / RT / RW / Nama Orang Tua di sistem."
+                        🔴 Salah Input Alamat / RT / RW / Nama Orang Tua di Sistem
                       </button>
                     </h2>
                     <div className={`accordion-collapse collapse ${openFaqs[2] ? 'show' : ''}`}>
-                      <div className="accordion-body small lh-lg bg-white border-top">
-                        <ul className="mb-0">
-                          <li>Cek status akun peserta. Jika statusnya <strong>Belum Diverifikasi / Masih Direvisi / Ditolak</strong>. Orang tua bisa langsung login dan EDIT MANUAL data/dokumennya di web spmb.</li>
-                          <li>Jika statusnya <strong>Sudah Disetujui (Centang Hijau)</strong>, maka akun sudah terkunci sistem. Petugas posko akan membuat laporan untuk minta "Hapus Akun". Setelah dihapus, orang tua baru bisa buat akun ulang dengan data yang benar.</li>
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <strong>Solusi ke Warga:</strong> 
+                        <ul className="mb-3">
+                          <li>Cek status akun peserta. Jika statusnya <strong>Belum Diverifikasi / Masih Direvisi / Ditolak</strong>, tenangkan warga. Mereka bisa langsung <em>login</em> dan <strong>EDIT MANUAL</strong> data/dokumennya di web Sidanira/SPMB tanpa perlu lapor posko.</li>
+                          <li>Jika statusnya <strong>Sudah Disetujui (Centang Hijau)</strong>, maka akun sudah terkunci sistem (bahkan jika nama ortu jadi nama jalan). Akun WAJIB ditolak/dihapus terlebih dahulu oleh verifikator dinas. Setelah terhapus, warga baru bisa buat akun ulang dari nol.</li>
                         </ul>
+                        <strong>Template Laporan ke Grup Posko:</strong>
+                        <div className="bg-dark text-white p-3 rounded mt-2 font-monospace position-relative" style={{fontSize: '0.8rem'}}>
+                          *PERMOHONAN HAPUS/REVISI AKUN SPMB (SALAH INPUT DATA)*<br/><br/>
+                          Nama Lengkap : <br/>
+                          No. Peserta / NIK : <br/>
+                          Tanggal Lahir : <br/>
+                          Status Ajuan Akun : Sudah Disetujui<br/>
+                          Jenjang yang dituju : <br/>
+                          Masalah : Salah input data (Sebutkan salahnya, misal: RT/RW tertukar, Nama Ortu salah, Alamat beda dengan KK). Mohon akun dihapus/ditolak agar warga bisa mengajukan ulang.<br/><br/>
+                          POSKO PELAYANAN SPMB JT 2
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Item 3 */}
+                  {/* Kasus 3: Masalah KK Pendatang Baru / Penertiban Dukcapil */}
                   <div className="accordion-item rounded-0 border-start-0 border-end-0">
                     <h2 className="accordion-header">
                       <button 
@@ -852,17 +1026,33 @@ export default function DashboardZonasiTerpadu() {
                         onClick={() => toggleFaq(3)}
                         style={{backgroundColor: openFaqs[3] ? '#f8f9fa' : 'white'}}
                       >
-                        🔴 "Nama SD/SMP Lulusan dari luar daerah tidak ada di pilihan dropdown sistem!"
+                        🔴 NIK Tidak Valid (Penertiban Dukcapil) / KK Terbaca "Pendatang Baru"
                       </button>
                     </h2>
                     <div className={`accordion-collapse collapse ${openFaqs[3] ? 'show' : ''}`}>
-                      <div className="accordion-body small lh-lg bg-white border-top">
-                         Sistem tidak melist puluhan ribu sekolah dari luar provinsi. Orang tua murid cukup mengetik manual di kotak pencarian sekolah: <strong>"SD LUAR KOTA"</strong> atau <strong>"SMP LUAR KOTA"</strong>, lalu klik pilih opsi tersebut.
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <strong>Solusi ke Warga:</strong> 
+                        <ul className="mb-3">
+                          <li><strong>Kasus NIK belum aktif (Penertiban):</strong> Jika warga bilang sudah diurus di kelurahan tapi di web SPMB masih muncul <em>pop-up</em> data tidak valid, jelaskan bahwa ini murni <strong>Ranah server Dukcapil</strong>. Sistem SPMB hanya membaca data yang dikirim Dukcapil. Warga harus menunggu sinkronisasi selesai.</li>
+                          <li><strong>Kasus KK Pendatang Baru (Padahal warga asli DKI):</strong> Ini terjadi jika KK baru terbit (lewat batas <em>cut off</em> 15 Juni 2025) sehingga sistem mengunci mereka. Warga <strong>WAJIB menggunakan KK LAMA</strong>. Jika akun sudah terlanjur pakai KK baru dan terkunci, lapor posko untuk dihapus.</li>
+                        </ul>
+                        <strong>Template Laporan ke Grup Posko:</strong>
+                        <div className="bg-dark text-white p-3 rounded mt-2 font-monospace position-relative" style={{fontSize: '0.8rem'}}>
+                          *PERMOHONAN HAPUS AKUN SPMB (KENDALA KK)*<br/><br/>
+                          Nama Lengkap : <br/>
+                          NIK : <br/>
+                          No. KK : <br/>
+                          Tanggal Lahir : <br/>
+                          Status Ajuan Akun : <br/>
+                          Jenjang yang dituju : <br/>
+                          Masalah : Tidak bisa lanjut daftar karena sistem membaca KK baru (lewat cut-off). Warga memiliki KK lama. Mohon dihapus agar warga bisa mengulang upload menggunakan KK lama yang valid.<br/><br/>
+                          POSKO PELAYANAN SPMB JT 2
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Item 4 */}
+                  {/* Kasus 4: Nilai TKA NOL */}
                   <div className="accordion-item rounded-0 border-start-0 border-end-0">
                     <h2 className="accordion-header">
                       <button 
@@ -871,17 +1061,28 @@ export default function DashboardZonasiTerpadu() {
                         onClick={() => toggleFaq(4)}
                         style={{backgroundColor: openFaqs[4] ? '#f8f9fa' : 'white'}}
                       >
-                        🔴 "Saya salah pilih tempat Sekolah Verifikasi, malah kepilih sekolah yang jauh banget dari rumah!"
+                        🔴 Prapendaftaran: Nilai TKA Terbaca "0" (NOL)
                       </button>
                     </h2>
                     <div className={`accordion-collapse collapse ${openFaqs[4] ? 'show' : ''}`}>
-                      <div className="accordion-body small lh-lg bg-white border-top">
-                        Tidak jadi masalah, karena Tempat Sekolah Verifikasi <strong>HANYA</strong> diperuntukkan sebagai pembagian tugas operator sekolah yang akan mengecek berkas secara online. Pemilihan itu <strong>TIDAK MENGUNCI</strong> sekolah tujuan (Prioritas Zonasi) yang akan dipilih anak saat jadwal pendaftaran di bulan Juni nanti. 
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <strong>Solusi ke Warga:</strong> Tenangkan warga! Sistem TKA untuk lulusan DKI Jakarta terintegrasi secara otomatis. Jika nilai TKA masih terbaca 0 atau belum muncul di detail pendaftaran, sampaikan bahwa sistem sedang melakukan penarikan data. <strong>HARAP BERSABAR</strong> dan cek secara berkala.
+                        <hr className="my-2"/>
+                        <strong>Template Laporan ke Grup Posko (Jika sudah mepet jadwal):</strong>
+                        <div className="bg-dark text-white p-3 rounded mt-2 font-monospace position-relative" style={{fontSize: '0.8rem'}}>
+                          *PENGECEKAN NILAI TKA TERBACA NOL*<br/><br/>
+                          Nama : <br/>
+                          NIK : <br/>
+                          No. Peserta : <br/>
+                          Status Akun : Sudah Aktivasi / Verifikasi<br/>
+                          Masalah : Pada detail siswa di sistem SPMB, nilai TKA (atau rerata TKA) masih tidak muncul / terbaca 0. Mohon dibantu pengecekannya.<br/><br/>
+                          POSKO PELAYANAN SPMB JT 2
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Item 5 */}
+                  {/* Kasus 5: Prapend Lambat Verifikasi */}
                   <div className="accordion-item rounded-0 border-start-0 border-end-0">
                     <h2 className="accordion-header">
                       <button 
@@ -890,17 +1091,31 @@ export default function DashboardZonasiTerpadu() {
                         onClick={() => toggleFaq(5)}
                         style={{backgroundColor: openFaqs[5] ? '#f8f9fa' : 'white'}}
                       >
-                        🔴 "Di sistem penginputan nilai Prapendaftaran ada mapel IPAS, padahal rapot sekolah asal anak saya cuma IPA. Gimana masukinnya?"
+                        🔴 Prapendaftaran Lama Diverifikasi / Warga Bolak-Balik Posko
                       </button>
                     </h2>
                     <div className={`accordion-collapse collapse ${openFaqs[5] ? 'show' : ''}`}>
-                      <div className="accordion-body small lh-lg bg-white border-top">
-                        Orang tua bisa menginput nilai mata pelajaran <strong>IPA</strong> ke dalam kolom IPAS tersebut.
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <strong>Solusi ke Warga:</strong> Berikan pengertian bahwa data Prapendaftaran (Luar Kota / Lulusan Lama) yang masuk ke Dinas Provinsi mencapai <strong>puluhan ribu antrean</strong>. Proses verifikasi pasti selesai. Jika ada dokumen yang salah/kosong di-<em>upload</em>, statusnya akan otomatis ditolak dan mereka harus mengunggah ulang (revisi).
+                        <hr className="my-2"/>
+                        <strong>Template Laporan ke Grup Posko (Gunakan HANYA jika jadwal sudah mepet):</strong>
+                        <div className="bg-dark text-white p-3 rounded mt-2 font-monospace position-relative" style={{fontSize: '0.8rem'}}>
+                          *PERMOHONAN PERCEPATAN VERIFIKASI PRA PENDAFTARAN*<br/><br/>
+                          No. Prapendaftaran : <br/>
+                          Nama Lengkap : <br/>
+                          NIK : <br/>
+                          Tanggal Lahir : <br/>
+                          Status Ajuan Akun : Menunggu Verifikasi<br/>
+                          Jenjang yang dituju : <br/>
+                          Berkas belum verif : (Cth: Dokumen Rapor, TKA, Prestasi, Semua Berkas)<br/>
+                          Keterangan : Orang tua sudah bolak-balik posko / Belum diverifikasi sejak tgl (...). Mohon bantuannya.<br/><br/>
+                          POSKO PELAYANAN SPMB JT 2
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Item 6 */}
+                  {/* Kasus 6: Sekolah Lulusan Tidak Ada */}
                   <div className="accordion-item rounded-0 border-start-0 border-end-0">
                     <h2 className="accordion-header">
                       <button 
@@ -909,16 +1124,53 @@ export default function DashboardZonasiTerpadu() {
                         onClick={() => toggleFaq(6)}
                         style={{backgroundColor: openFaqs[6] ? '#f8f9fa' : 'white'}}
                       >
-                        🔴 "Di mana saya bisa cek Nilai TKA dan memastikan Sertifikat Prestasi anak saya terbaca sistem?"
+                        🔴 Nama Sekolah Lulusan Asal Daerah Tidak Ada di Dropdown Sistem
                       </button>
                     </h2>
                     <div className={`accordion-collapse collapse ${openFaqs[6] ? 'show' : ''}`}>
-                      <div className="accordion-body small lh-lg bg-white border-top">
-                        <ul className="mb-0 mt-2">
-                          <li>Cek Nilai TKA: <span className="text-primary fw-bold">sidanira.jakarta.go.id/tka</span></li>
-                          <li>Simulasi Total Nilai Prestasi: <span className="text-primary fw-bold">sidanira.jakarta.go.id/simulasi259</span></li>
-                          <li>Validasi Sertifikat SKH-TKA Nasional: <span className="text-primary fw-bold">shtka.kemendikdasmen.go.id/verifikasi-shtka</span></li>
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                         <strong>Solusi ke Warga:</strong> Sistem pendaftaran tidak menyimpan puluhan ribu nama sekolah di luar provinsi DKI Jakarta. Arahkan warga untuk <strong>mengetik manual</strong> di kotak pencarian kolom Asal Sekolah: <strong>"SD LUAR KOTA"</strong> atau <strong>"SMP LUAR KOTA"</strong>, lalu klik pilih pada opsi yang muncul tersebut. Lanjutkan proses pendaftaran, itu sudah benar.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kasus 7: Wilayah Lulusan Salah / Error Web */}
+                  <div className="accordion-item rounded-0 border-start-0 border-end-0">
+                    <h2 className="accordion-header">
+                      <button 
+                        className={`accordion-button fw-bold py-4 text-dark ${openFaqs[7] ? '' : 'collapsed'}`} 
+                        type="button" 
+                        onClick={() => toggleFaq(7)}
+                        style={{backgroundColor: openFaqs[7] ? '#f8f9fa' : 'white'}}
+                      >
+                        🔴 Web Sidanira Sering Error / Berkas Hilang Sendiri / Wilayah Salah
+                      </button>
+                    </h2>
+                    <div className={`accordion-collapse collapse ${openFaqs[7] ? 'show' : ''}`}>
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <ul className="mb-0">
+                          <li className="mb-3"><strong>Kasus Berkas Hilang Saat Upload:</strong> Hal ini murni karena *server* web Sidanira/SPMB sedang mengalami *traffic* padat atau permasalahan sistem. Minta warga untuk me-*refresh* (F5), menggunakan *browser* lain (misal dari Chrome ke Mozilla), atau *login* menggunakan perangkat (*device*) yang berbeda.</li>
+                          <li><strong>Kasus Asal Sekolah Luar Kota Tertulis "Kepulauan Seribu/Jaksel":</strong> Jika warga dari Bandung tapi di web tertulis Kepulauan Seribu, <strong>LANJUTKAN SAJA, AMAN</strong>. Yang terpenting sistem membaca status anak tersebut sebagai lulusan "Luar DKI Jakarta". Tidak perlu dibatalkan.</li>
                         </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kasus 8: Salah Pilih Tempat Verifikasi */}
+                  <div className="accordion-item rounded-0 border-start-0 border-end-0">
+                    <h2 className="accordion-header">
+                      <button 
+                        className={`accordion-button fw-bold py-4 text-dark ${openFaqs[8] ? '' : 'collapsed'}`} 
+                        type="button" 
+                        onClick={() => toggleFaq(8)}
+                        style={{backgroundColor: openFaqs[8] ? '#f8f9fa' : 'white'}}
+                      >
+                        🔴 Warga Salah Pilih Tempat "Sekolah Verifikasi" Jauh dari Rumah
+                      </button>
+                    </h2>
+                    <div className={`accordion-collapse collapse ${openFaqs[8] ? 'show' : ''}`}>
+                      <div className="accordion-body small lh-lg bg-white border-top p-4">
+                        <strong>Solusi ke Warga:</strong> Sampaikan agar **TIDAK PERLU PANIK**. Sekolah tempat verifikasi di sistem **HANYA** digunakan untuk pembagian tugas siapa operator/guru yang akan mengecek berkas *online* mereka di depan layar. Hal ini <strong>TIDAK MENGUNCI</strong>, tidak mengurangi jatah, dan tidak mempengaruhi kebebasan warga dalam memilih sekolah tujuan saat jadwal Pendaftaran nanti.
                       </div>
                     </div>
                   </div>
