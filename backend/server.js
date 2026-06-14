@@ -31,20 +31,34 @@ app.get('/api/antrean', async (req, res) => {
 });
 
 // Endpoint untuk MENGUPDATE (Tambah/Kurang) nomor antrean
+// Endpoint untuk MENGUPDATE nomor antrean (Sistem Shared Queue)
 app.post('/api/antrean/update', async (req, res) => {
-  const { id, action } = req.body; // action: 'next' atau 'prev'
+  const { id, action } = req.body; 
 
   try {
-    let query = '';
     if (action === 'next') {
-      query = 'UPDATE antrean_posko SET nomor_sekarang = nomor_sekarang + 1 WHERE id = $1 RETURNING *';
+      // Cari nilai tertinggi di kategori yang sama, lalu +1 untuk meja yang memanggil
+      const query = `
+        WITH target_kat AS (SELECT kategori FROM antrean_posko WHERE id = $1),
+             max_val AS (SELECT COALESCE(MAX(nomor_sekarang), 0) AS max_num FROM antrean_posko WHERE kategori = (SELECT kategori FROM target_kat))
+        UPDATE antrean_posko
+        SET nomor_sekarang = (SELECT max_num FROM max_val) + 1
+        WHERE id = $1
+        RETURNING *;
+      `;
+      const result = await pool.query(query, [id]);
+      res.json(result.rows[0]);
     } else if (action === 'prev') {
-      // Mencegah nomor antrean menjadi minus
-      query = 'UPDATE antrean_posko SET nomor_sekarang = GREATEST(0, nomor_sekarang - 1) WHERE id = $1 RETURNING *';
+      // Tombol Minus (-) hanya mengoreksi/mengurangi nomor di meja itu saja
+      const query = `
+        UPDATE antrean_posko
+        SET nomor_sekarang = GREATEST(0, nomor_sekarang - 1)
+        WHERE id = $1
+        RETURNING *;
+      `;
+      const result = await pool.query(query, [id]);
+      res.json(result.rows[0]);
     }
-
-    const result = await pool.query(query, [id]);
-    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Gagal mengupdate antrean' });
