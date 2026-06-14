@@ -143,7 +143,7 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
         {/* --- LOKET SUDIN (9 MEJA) --- */}
         <div className="mb-5">
           <h5 className="fw-bold text-primary mb-3 text-center border-bottom border-primary pb-2 d-inline-block mx-auto">
-            LOKET LAYANAN SUDIN PENDIDIKAN JT2
+            LOKET LAYANAN SUDIN 
           </h5>
           <div className="row g-3 justify-content-center">
             {antreanSudin.map((item) => (
