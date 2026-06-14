@@ -1,16 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function Antrean() {
   const [antrean, setAntrean] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // State untuk mengontrol komputer mana yang jadi sumber suara (TV)
+  const [isTvMode, setIsTvMode] = useState(false);
+  
+  // Reference agar nilai terbaru bisa dibaca di dalam fungsi Interval (tanpa bug closure)
+  const isTvModeRef = useRef(false);
+  const prevAntreanRef = useRef([]);
 
-  // GANTI DENGAN URL BACKEND NODE.JS KAMU YANG ONLINE
- const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
+  // GANTI DENGAN URL BACKEND NODE.JS KAMU NANTI (Misal: https://api.zonasispmb.com/api/antrean)
+const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
+  // ==========================================
+  // FUNGSI SUARA AI (TEXT TO SPEECH)
+  // ==========================================
+  const panggilSuara = (nomor, meja, kategori) => {
+    if ('speechSynthesis' in window) {
+      const sebutanPosko = kategori === 'SUDIN' ? 'Posko Sudin' : 'Posko Dukcapil';
+      const teks = `Nomor antrean, ${nomor}, silakan menuju ke, ${meja}, ${sebutanPosko}`;
+      const utterance = new SpeechSynthesisUtterance(teks);
+      
+      utterance.lang = 'id-ID';
+      utterance.rate = 0.85; 
+      utterance.pitch = 1;   
 
+      // Trik untuk mencegah bug suara hilang di Google Chrome
+      window.utterance = utterance; 
+      window.speechSynthesis.speak(window.utterance);
+    }
+  };
+
+  // ==========================================
+  // FUNGSI PENARIKAN DATA (POLLING)
+  // ==========================================
   const fetchAntrean = async () => {
     try {
       const response = await fetch(API_URL);
       const data = await response.json();
+
+      // LOGIKA CERDAS: Cek apakah ada penambahan nomor dari petugas di PC lain
+      if (isTvModeRef.current && prevAntreanRef.current.length > 0) {
+        data.forEach(mejaBaru => {
+          const mejaLama = prevAntreanRef.current.find(m => m.id === mejaBaru.id);
+          
+          // Jika nomor di database lebih besar dari nomor di layar saat ini -> BUNYIKAN SUARA!
+          if (mejaLama && mejaBaru.nomor_sekarang > mejaLama.nomor_sekarang) {
+            panggilSuara(mejaBaru.nomor_sekarang, mejaBaru.nama_meja, mejaBaru.kategori);
+          }
+        });
+      }
+
+      // Simpan data terbaru ke memori layar
+      prevAntreanRef.current = data;
       setAntrean(data);
       setIsLoading(false);
     } catch (error) {
@@ -18,7 +61,6 @@ export default function Antrean() {
     }
   };
 
-  // Polling data setiap 3 detik
   useEffect(() => {
     fetchAntrean();
     const interval = setInterval(fetchAntrean, 3000); 
@@ -26,63 +68,46 @@ export default function Antrean() {
   }, []);
 
   // ==========================================
-  // FUNGSI SUARA AI (TEXT TO SPEECH)
+  // HANDLER SAKELAR MODE TV
   // ==========================================
- const panggilSuara = (nomor, meja) => {
-    if ('speechSynthesis' in window) {
-      const teks = `Nomor antrean, ${nomor}, silakan menuju ke, ${meja}`;
-      const utterance = new SpeechSynthesisUtterance(teks);
-      
-      // Pengaturan Suara (Bahasa Indonesia)
-      utterance.lang = 'id-ID';
-      utterance.rate = 0.85; // Kecepatan diperlambat sedikit agar natural
-      utterance.pitch = 1;   
+  const toggleTvMode = (e) => {
+    const checked = e.target.checked;
+    setIsTvMode(checked);
+    isTvModeRef.current = checked; // Simpan ke referensi
 
-      // Trik untuk mencegah bug suara tiba-tiba hilang/bisu di Google Chrome
-      window.utterance = utterance; 
-      
-      // Mainkan suara
-      window.speechSynthesis.speak(window.utterance);
-    } else {
-      console.warn('Browser Anda tidak mendukung fitur suara AI Text-to-Speech.');
+    if (checked) {
+      // Browser butuh interaksi klik pertama agar suara tidak diblokir
+      const dummy = new SpeechSynthesisUtterance('');
+      window.speechSynthesis.speak(dummy);
+      alert("✅ Mode Suara TV Aktif! Komputer ini akan bersuara jika ada petugas yang memanggil antrean.");
     }
   };
 
+  // ==========================================
+  // HANDLER TOMBOL OPERATOR (Di PC Petugas)
+  // ==========================================
   const handleUpdate = async (id, action) => {
-    // 1. CARI NOMOR BARU DULUAN SECARA SINKRON (Jangan di dalam setAntrean)
-    const targetDesk = antrean.find(item => item.id === id);
-    if (!targetDesk) return;
+    // Layar petugas langsung update (optimistic UI) biar ga nge-lag
+    setAntrean(prev => prev.map(item => {
+      if (item.id === id) {
+        // Cari maksimal nomor di kategori yang sama
+        const maxNomor = Math.max(...prev.filter(i => i.kategori === item.kategori).map(i => i.nomor_sekarang));
+        const newNomor = action === 'next' ? maxNomor + 1 : Math.max(0, item.nomor_sekarang - 1);
+        return { ...item, nomor_sekarang: newNomor };
+      }
+      return item;
+    }));
 
-    // Cari nomor tertinggi di kategori meja tersebut
-    const maxNomor = Math.max(...antrean.filter(i => i.kategori === targetDesk.kategori).map(i => i.nomor_sekarang));
-    
-    // Tentukan nomor panggil yang baru
-    const newNomor = action === 'next' ? maxNomor + 1 : Math.max(0, targetDesk.nomor_sekarang - 1);
-
-    // 2. JALANKAN SUARA LANGSUNG SAAT TOMBOL DIKLIK (Mencegah blokir browser)
-    if (action === 'next') {
-      panggilSuara(newNomor, targetDesk.nama_meja);
-    }
-
-    // 3. UPDATE LAYAR LANGSUNG (Optimistic Update tanpa delay)
-    setAntrean(prev => prev.map(item => 
-      item.id === id ? { ...item, nomor_sekarang: newNomor } : item
-    ));
-
-    // 4. KIRIM KE DATABASE (BACKEND)
     try {
-      const response = await fetch(`${API_URL}/update`, {
+      await fetch(`${API_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action })
       });
-      const updatedRow = await response.json();
-      
-      // Update data resmi dari database ke layar untuk memastikan valid
-      setAntrean(prev => prev.map(item => item.id === id ? updatedRow : item));
+      // Sinkronisasikan ulang setelah berhasil simpan
+      fetchAntrean();
     } catch (error) {
       console.error("Gagal update data ke database:", error);
-      fetchAntrean(); // Rollback ke data asli jika error jaringan
     }
   };
 
@@ -90,20 +115,33 @@ export default function Antrean() {
     return <div className="text-center mt-5 py-5 fw-bold text-muted">Menghubungkan ke Server Database Antrean...</div>;
   }
 
-  // Pisahkan & Urutkan agar posisi meja rapi berurutan (1,2,3...9)
   const antreanSudin = antrean.filter(a => a.kategori === 'SUDIN').sort((a, b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
   const antreanDukcapil = antrean.filter(a => a.kategori === 'DUKCAPIL').sort((a, b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
 
   return (
     <div className="card shadow border-0 rounded-0 bg-white mb-5 p-0 overflow-hidden">
       
-      {/* HEADER TV */}
-      <div className="bg-dark text-white text-center py-3 border-bottom border-4 border-warning">
-        <h2 className="fw-bolder mb-0 tracking-wider text-uppercase">MONITOR ANTREAN POSKO SPMB</h2>
+      {/* HEADER TV & SAKELAR MODE */}
+      <div className="bg-dark text-white d-flex flex-column flex-md-row align-items-center justify-content-between px-4 py-3 border-bottom border-4 border-warning">
+        <h2 className="fw-bolder mb-2 mb-md-0 tracking-wider text-uppercase">MONITOR ANTREAN POSKO SPMB</h2>
+        
+        {/* SAKELAR INI YANG PALING PENTING */}
+        <div className="form-check form-switch fs-5 bg-black bg-opacity-25 px-4 py-2 rounded-pill border border-secondary">
+          <input 
+            className="form-check-input" 
+            type="checkbox" 
+            id="tvModeSwitch" 
+            style={{cursor: 'pointer'}}
+            checked={isTvMode}
+            onChange={toggleTvMode}
+          />
+          <label className="form-check-label text-warning fw-bold ms-2" htmlFor="tvModeSwitch" style={{cursor: 'pointer'}}>
+            🔊 MODE SUARA TV
+          </label>
+        </div>
       </div>
       
       <div className="card-body p-3 p-md-4 bg-light">
-        
         {/* --- LOKET SUDIN (9 MEJA) --- */}
         <div className="mb-5">
           <h5 className="fw-bold text-primary mb-3 text-center border-bottom border-primary pb-2 d-inline-block mx-auto">
@@ -154,12 +192,11 @@ export default function Antrean() {
           <span className="badge bg-danger p-2 me-2 blink">LIVE</span>
           <div>
             <h6 className="fw-bold text-dark mb-0">PANEL OPERATOR</h6>
-            <span className="text-muted" style={{fontSize: '0.75rem'}}>Klik (+) untuk memanggil antrean selanjutnya (Suara otomatis menyala).</span>
+            <span className="text-muted" style={{fontSize: '0.75rem'}}>Petugas dapat mengakses web ini di HP/Laptop masing-masing dan klik (+) untuk memanggil.</span>
           </div>
         </div>
         
         <div className="row g-4">
-          {/* Kontrol Sudin */}
           <div className="col-lg-8 border-end-lg">
             <div className="text-primary fw-bold small mb-2"><i className="bi bi-person-badge"></i> KONTROL MEJA SUDIN</div>
             <div className="row g-2">
@@ -180,7 +217,6 @@ export default function Antrean() {
             </div>
           </div>
           
-          {/* Kontrol Dukcapil */}
           <div className="col-lg-4 mt-4 mt-lg-0">
             <div className="text-success fw-bold small mb-2"><i className="bi bi-card-heading"></i> KONTROL MEJA DUKCAPIL</div>
             <div className="row g-2">
