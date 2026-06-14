@@ -123,7 +123,7 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
       
       {/* HEADER TV & SAKELAR MODE */}
       <div className="bg-dark text-white d-flex flex-column flex-md-row align-items-center justify-content-between px-4 py-3 border-bottom border-4 border-warning">
-        <h2 className="fw-bolder mb-2 mb-md-0 tracking-wider text-uppercase">MONITOR ANTREAN POSKO SPMB</h2>
+        <h2 className="fw-bolder mb-2 mb-md-0 tracking-wider text-uppercase">MODEL LAYANAN ANTRIAN POSKO SUDIN JT2</h2>
         
         {/* SAKELAR INI YANG PALING PENTING */}
         <div className="form-check form-switch fs-5 bg-black bg-opacity-25 px-4 py-2 rounded-pill border border-secondary">
