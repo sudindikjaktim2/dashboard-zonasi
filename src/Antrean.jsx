@@ -145,7 +145,7 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
         {/* --- LOKET SUDIN (9 MEJA) --- */}
         <div className="mb-5">
           <h5 className="fw-bold text-primary mb-3 text-center border-bottom border-primary pb-2 d-inline-block mx-auto">
-            LOKET LAYANAN SUDIN PENDIDIKAN
+            LOKET LAYANAN SUDIN PENDIDIKAN JT2
           </h5>
           <div className="row g-3 justify-content-center">
             {antreanSudin.map((item) => (
@@ -166,7 +166,7 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
         {/* --- LOKET DUKCAPIL (3 MEJA) --- */}
         <div className="mb-2 mt-4">
           <h5 className="fw-bold text-success mb-3 text-center border-bottom border-success pb-2 d-inline-block mx-auto">
-            LOKET LAYANAN DUKCAPIL (KK & NIK)
+            LOKET LAYANAN DUKCAPIL
           </h5>
           <div className="row g-3 justify-content-center">
             {antreanDukcapil.map((item) => (
