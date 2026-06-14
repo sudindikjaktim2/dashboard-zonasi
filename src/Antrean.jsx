@@ -126,12 +126,12 @@ const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
         <h2 className="fw-bolder mb-2 mb-md-0 tracking-wider text-uppercase">MODEL LAYANAN ANTRIAN POSKO SUDIN JT2</h2>
         
         {/* SAKELAR INI YANG PALING PENTING */}
-        <div className="form-check form-switch fs-5 bg-black bg-opacity-25 px-4 py-2 rounded-pill border border-secondary">
+       <div className="form-check form-switch fs-5 bg-black bg-opacity-25 px-4 py-2 rounded-pill border border-secondary d-flex align-items-center">
           <input 
-            className="form-check-input" 
+            className="form-check-input shadow-none mt-0 border-0" 
             type="checkbox" 
             id="tvModeSwitch" 
-            style={{cursor: 'pointer'}}
+            style={{cursor: 'pointer', boxShadow: 'none', outline: 'none'}}
             checked={isTvMode}
             onChange={toggleTvMode}
           />
