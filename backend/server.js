@@ -1,0 +1,49 @@
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Ganti string ini dengan Connection String dari Neon Tech kamu
+const pool = new Pool({
+  connectionString: 'postgresql://neondb_owner:npg_08JYBzWFxjNI@ep-old-silence-advl8jut-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=verify-full'
+});
+
+// Endpoint untuk MENGAMBIL semua data antrean
+app.get('/api/antrean', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM antrean_posko ORDER BY id ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Gagal mengambil data antrean' });
+  }
+});
+
+// Endpoint untuk MENGUPDATE (Tambah/Kurang) nomor antrean
+app.post('/api/antrean/update', async (req, res) => {
+  const { id, action } = req.body; // action: 'next' atau 'prev'
+
+  try {
+    let query = '';
+    if (action === 'next') {
+      query = 'UPDATE antrean_posko SET nomor_sekarang = nomor_sekarang + 1 WHERE id = $1 RETURNING *';
+    } else if (action === 'prev') {
+      // Mencegah nomor antrean menjadi minus
+      query = 'UPDATE antrean_posko SET nomor_sekarang = GREATEST(0, nomor_sekarang - 1) WHERE id = $1 RETURNING *';
+    }
+
+    const result = await pool.query(query, [id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Gagal mengupdate antrean' });
+  }
+});
+
+const PORT = 5000;
+app.listen(PORT, () => {
+  console.log(`Backend Antrean berjalan di port ${PORT}`);
+});

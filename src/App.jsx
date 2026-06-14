@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import Antrean from './Antrean';
 
 // Fungsi helper untuk normalisasi teks pencocokan (anti-typo)
 const normalisasiTeks = (teks) => {
@@ -15,47 +16,42 @@ const bersihkanNamaKelurahan = (teks) => {
 };
 
 export default function DashboardZonasiTerpadu() {
-  // ==========================================
-  // STATE MANAGEMENT UTAMA
-  // ==========================================
+  // State Management Utama
   const [dataSekolah, setDataSekolah] = useState([]);
-  const [listKelurahan, setListKelurahan] = useState([]);
+  const [listKelurahan, setListKelurahan] = useState([]); // State baru untuk Dropdown
   const [formData, setFormData] = useState({ kelurahan: '', rt: '', rw: '' });
   const [hasilPencarian, setHasilPencarian] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard'); 
-  
-  // State Autocomplete Kelurahan
+  // State khusus untuk fitur Autocomplete Kelurahan
   const [filteredKelurahan, setFilteredKelurahan] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   
-  // State Accordion FAQ
+  // State untuk mengontrol Accordion FAQ secara mandiri
   const [openFaqs, setOpenFaqs] = useState({});
   const toggleFaq = (id) => {
     setOpenFaqs(prev => ({ ...prev, [id]: !prev[id] }));
   };
-
-  // State Nomor Antrean Posko
-  const [antrian, setAntrian] = useState({
-    meja1: 2,
-    meja2: 4,
-    meja3: 7,
-    meja4: 10,
-    meja5: 3 // Khusus Dukcapil
-  });
-
-  // Fungsi Update Antrean Operator
-  const updateAntrian = (meja, delta) => {
-    setAntrian(prev => ({
-      ...prev,
-      [meja]: Math.max(0, prev[meja] + delta) // Mencegah nomor minus
-    }));
+// Handler khusus untuk Autocomplete Kelurahan (Muncul setelah 3 huruf)
+  const handleKelurahanChange = (e) => {
+    const val = e.target.value.toUpperCase();
+    setFormData({ ...formData, kelurahan: val });
+    
+    if (val.length >= 3) {
+      const filtered = listKelurahan.filter(k => k.includes(val));
+      setFilteredKelurahan(filtered);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
   };
 
-  // ==========================================
-  // PROSES LOAD & PARSE DATA EXCEL ZONASI
-  // ==========================================
-  useEffect(() => {
+  const handleSelectKelurahan = (kel) => {
+    setFormData({ ...formData, kelurahan: kel });
+    setShowSuggestions(false); // Tutup dropdown setelah dipilih
+  };
+  // Proses Load & Parse Data Excel
+ useEffect(() => {
     const loadAllExcelFiles = async () => {
       const fileConfigs = [
         { jenjang: 'SD', url: '/WILAYAH_SD_T1.xlsx' },
@@ -74,7 +70,7 @@ export default function DashboardZonasiTerpadu() {
           const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           const parsedSchools = [];
-          const localKelurahanMap = new Map(); 
+          const localKelurahanMap = new Map(); // Menggunakan Map untuk mencegah duplikat spasi
           let currentSchool = null;
 
           for (let i = 0; i < rawRows.length; i++) {
@@ -97,14 +93,17 @@ export default function DashboardZonasiTerpadu() {
             }
 
             if (currentSchool) {
+              // Fungsi pintar untuk menyaring kelurahan ke Dropdown
               const tambahKelurahan = (teks) => {
                 if (!teks) return;
                 const clean = bersihkanNamaKelurahan(teks);
-                const key = normalisasiTeks(clean); 
+                const key = normalisasiTeks(clean); // Cth: "BIDARACINA" (tanpa spasi)
                 
                 if (!localKelurahanMap.has(key)) {
                   localKelurahanMap.set(key, clean);
                 } else {
+                  // Jika yang tersimpan sebelumnya gak ada spasi (BIDARACINA), 
+                  // timpa dengan versi yang ada spasinya (BIDARA CINA) agar dropdown rapi.
                   if (clean.includes(' ') && !localKelurahanMap.get(key).includes(' ')) {
                     localKelurahanMap.set(key, clean);
                   }
@@ -116,6 +115,7 @@ export default function DashboardZonasiTerpadu() {
               if (row[9]) tambahKelurahan(row[9]);
               if (row[11]) tambahKelurahan(row[11]);
 
+              // Mapping Prioritas 1
               if (row[5]) { 
                 currentSchool.prioritas_1.push({
                   rt: String(row[3] || '').trim().padStart(3, '0'),
@@ -125,12 +125,14 @@ export default function DashboardZonasiTerpadu() {
               }
 
               if (file.jenjang === 'SD') {
+                // Mapping Prioritas 2 SD
                 if (row[7]) {
                   currentSchool.prioritas_2.push({
                     kelurahan: normalisasiTeks(row[7])
                   });
                 }
               } else {
+                // Mapping Prioritas 2 SMP/SMA
                 if (row[9]) {
                   currentSchool.prioritas_2.push({
                     rt: String(row[7] || '').trim().padStart(3, '0'),
@@ -138,6 +140,7 @@ export default function DashboardZonasiTerpadu() {
                     kelurahan: normalisasiTeks(row[9])
                   });
                 }
+                // Mapping Prioritas 3 SMP/SMA
                 if (row[11]) {
                   currentSchool.prioritas_3.push({
                     kelurahan: normalisasiTeks(row[11])
@@ -150,8 +153,11 @@ export default function DashboardZonasiTerpadu() {
         });
 
         const results = await Promise.all(fetchPromises);
+        
+        // Gabungkan semua sekolah
         const mergedSchools = results.flatMap(r => r.parsedSchools);
         
+        // Gabungkan semua kelurahan dari berbagai file excel
         const finalKelurahanMap = new Map();
         results.forEach(r => {
           r.localKelurahanMap.forEach((cleanName, key) => {
@@ -163,6 +169,7 @@ export default function DashboardZonasiTerpadu() {
           });
         });
 
+        // Jadikan array dan urutkan sesuai abjad (A-Z)
         const sortedKelurahan = Array.from(finalKelurahanMap.values()).sort();
 
         setDataSekolah(mergedSchools);
@@ -178,31 +185,12 @@ export default function DashboardZonasiTerpadu() {
     loadAllExcelFiles();
   }, []);
 
-  // ==========================================
-  // HANDLER PENCARIAN & ZONASI
-  // ==========================================
-  const handleKelurahanChange = (e) => {
-    const val = e.target.value.toUpperCase();
-    setFormData({ ...formData, kelurahan: val });
-    
-    if (val.length >= 3) {
-      const filtered = listKelurahan.filter(k => k.includes(val));
-      setFilteredKelurahan(filtered);
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
-    }
-  };
-
-  const handleSelectKelurahan = (kel) => {
-    setFormData({ ...formData, kelurahan: kel });
-    setShowSuggestions(false); 
-  };
-
+  // Handler Form
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value.toUpperCase() });
   };
 
+  // Algoritma Pencarian & Skor Kedekatan (Versi Baru Tanpa Kecamatan)
   const cariZonasi = (e) => {
     e.preventDefault();
     const result = [];
@@ -215,6 +203,7 @@ export default function DashboardZonasiTerpadu() {
       let skorKedekatan = 0;
       const alamatNormal = normalisasiTeks(sekolah.alamat);
       
+      // Jika kelurahan sekolah sama persis dengan domisili pencari
       if (alamatNormal.includes(searchKel)) {
         skorKedekatan = 2; 
       }
@@ -237,6 +226,7 @@ export default function DashboardZonasiTerpadu() {
       }
     });
 
+    // Urutkan: Prio (1,2,3) -> Skor Jarak (2,0) -> Jenjang (SD, SMP, SMA)
     result.sort((a, b) => {
       if (a.status < b.status) return -1;
       if (a.status > b.status) return 1;
@@ -292,7 +282,7 @@ export default function DashboardZonasiTerpadu() {
                 className={`nav-link text-dark fw-semibold rounded-2 px-3 py-2 w-100 ${activeTab === 'panduan' ? 'active bg-white border shadow-sm' : 'bg-light text-muted border'}`}
                 onClick={() => setActiveTab('panduan')}
               >
-                📖 Buku Saku Petugas
+                📖 Buku Saku
               </button>
             </li>
           </ul>
@@ -310,7 +300,7 @@ export default function DashboardZonasiTerpadu() {
                   <form onSubmit={cariZonasi}>
                     <div className="row g-4 justify-content-center">
                      <div className="col-md-4 position-relative">
-                        <label className="form-label text-secondary small fw-bold">KELURAHAN DOMISILI</label>
+                        <label className="form-label text-secondary small fw-bold">KELURAHAN</label>
                         <input 
                           type="text" 
                           className="form-control rounded-0 p-2 border-secondary" 
@@ -322,6 +312,7 @@ export default function DashboardZonasiTerpadu() {
                           disabled={isLoading} 
                           autoComplete="off"
                         />
+                        {/* Dropdown Autocomplete Muncul di Sini */}
                         {showSuggestions && filteredKelurahan.length > 0 && (
                           <ul className="list-group position-absolute w-100 shadow-lg" style={{ zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
                             {filteredKelurahan.map((kel, idx) => (
@@ -357,6 +348,7 @@ export default function DashboardZonasiTerpadu() {
 
               {hasilPencarian && (
                 <>
+                  {/* SUMMARY CARDS */}
                   <div className="row g-4 mb-4">
                     <div className="col-md-4">
                       <div className="card border-0 shadow-sm rounded-0 bg-info bg-opacity-10 border-start border-info border-4">
@@ -390,6 +382,7 @@ export default function DashboardZonasiTerpadu() {
                     </div>
                   </div>
 
+                  {/* TABEL HASIL PENCARIAN */}
                   <div className="card shadow-sm border-0 rounded-0">
                     <div className="card-header bg-white border-bottom rounded-0 d-flex justify-content-between align-items-center py-3">
                       <h6 className="mb-0 text-dark fw-bold">Rincian Pemetaan Wilayah Berdasarkan Dokumen</h6>
@@ -453,141 +446,7 @@ export default function DashboardZonasiTerpadu() {
           )}
 
           {/* ========================================= */}
-          {/* TAB 2: LAYAR ANTREAN POSKO                  */}
-          {/* ========================================= */}
-          {activeTab === 'antrian' && (
-            <div className="card shadow border-0 rounded-0 bg-white mb-5 p-0 overflow-hidden">
-              <div className="bg-dark text-white text-center py-4 border-bottom border-4 border-warning">
-                <h2 className="fw-bold mb-1 tracking-wider text-uppercase">MONITOR ANTRIAN POSKO</h2>
-                <p className="mb-0 text-white-50">Sistem Penerimaan Murid Baru 2026</p>
-              </div>
-              
-              <div className="card-body p-3 p-md-5 bg-light">
-                
-                {/* --- SEKSI POSKO SUDIN --- */}
-                <div className="mb-5">
-                  <h5 className="fw-bold text-primary mb-4 text-center border-bottom border-primary pb-3 d-inline-block mx-auto">
-                    POSKO SUKU DINAS PENDIDIKAN
-                  </h5>
-                  <div className="row g-4 justify-content-center">
-                    {/* Meja 1 */}
-                    <div className="col-6 col-md-3">
-                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
-                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 1</div>
-                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
-                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
-                            {antrian.meja1.toString().padStart(3, '0')}
-                          </h1>
-                        </div>
-                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
-                      </div>
-                    </div>
-                    {/* Meja 2 */}
-                    <div className="col-6 col-md-3">
-                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
-                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 2</div>
-                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
-                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
-                            {antrian.meja2.toString().padStart(3, '0')}
-                          </h1>
-                        </div>
-                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
-                      </div>
-                    </div>
-                    {/* Meja 3 */}
-                    <div className="col-6 col-md-3">
-                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
-                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 3</div>
-                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
-                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
-                            {antrian.meja3.toString().padStart(3, '0')}
-                          </h1>
-                        </div>
-                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
-                      </div>
-                    </div>
-                    {/* Meja 4 */}
-                    <div className="col-6 col-md-3">
-                      <div className="card border-0 shadow-sm rounded-4 h-100 text-center overflow-hidden">
-                        <div className="bg-primary text-white py-2 fw-bold fs-5">MEJA 4</div>
-                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
-                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
-                            {antrian.meja4.toString().padStart(3, '0')}
-                          </h1>
-                        </div>
-                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Loket Layanan</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* --- SEKSI POSKO DUKCAPIL --- */}
-                <div className="mb-4">
-                  <h5 className="fw-bold text-success mb-4 text-center border-bottom border-success pb-3 d-inline-block mx-auto">
-                    POSKO DUKCAPIL (KK & NIK)
-                  </h5>
-                  <div className="row justify-content-center">
-                    {/* Meja 5 */}
-                    <div className="col-8 col-md-4">
-                      <div className="card border-0 shadow rounded-4 h-100 text-center overflow-hidden">
-                        <div className="bg-success text-white py-2 fw-bold fs-5">MEJA 5</div>
-                        <div className="card-body py-4 bg-white d-flex align-items-center justify-content-center">
-                          <h1 className="display-3 fw-bolder text-dark mb-0 font-monospace">
-                            {antrian.meja5.toString().padStart(3, '0')}
-                          </h1>
-                        </div>
-                        <div className="card-footer bg-light border-0 py-2 small fw-semibold text-muted">Verifikasi Dokumen</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* --- PANEL OPERATOR (ADMIN) --- */}
-              <div className="card-footer bg-white border-top border-3 p-4">
-                <div className="d-flex align-items-center mb-3">
-                  <span className="badge bg-danger p-2 me-2">LIVE</span>
-                  <h6 className="fw-bold text-dark mb-0">PANEL OPERATOR (Ubah Nomor Antrean)</h6>
-                </div>
-                <div className="row g-3">
-                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
-                    <span className="fw-bold me-3 text-secondary">MEJA 1 :</span>
-                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja1', -1)}>-</button>
-                    <span className="mx-3 fw-bold fs-5">{antrian.meja1}</span>
-                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja1', 1)}>+</button>
-                  </div>
-                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
-                    <span className="fw-bold me-3 text-secondary">MEJA 2 :</span>
-                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja2', -1)}>-</button>
-                    <span className="mx-3 fw-bold fs-5">{antrian.meja2}</span>
-                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja2', 1)}>+</button>
-                  </div>
-                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
-                    <span className="fw-bold me-3 text-secondary">MEJA 3 :</span>
-                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja3', -1)}>-</button>
-                    <span className="mx-3 fw-bold fs-5">{antrian.meja3}</span>
-                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja3', 1)}>+</button>
-                  </div>
-                  <div className="col-12 col-md-auto d-flex align-items-center border rounded px-3 py-2 bg-light">
-                    <span className="fw-bold me-3 text-secondary">MEJA 4 :</span>
-                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja4', -1)}>-</button>
-                    <span className="mx-3 fw-bold fs-5">{antrian.meja4}</span>
-                    <button className="btn btn-sm btn-primary px-3 fw-bold" onClick={() => updateAntrian('meja4', 1)}>+</button>
-                  </div>
-                  <div className="col-12 col-md-auto d-flex align-items-center border border-success rounded px-3 py-2 bg-success bg-opacity-10">
-                    <span className="fw-bold me-3 text-success">MEJA 5 (DKC) :</span>
-                    <button className="btn btn-sm btn-outline-danger px-3 fw-bold" onClick={() => updateAntrian('meja5', -1)}>-</button>
-                    <span className="mx-3 fw-bold fs-5">{antrian.meja5}</span>
-                    <button className="btn btn-sm btn-success px-3 fw-bold" onClick={() => updateAntrian('meja5', 1)}>+</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================= */}
-          {/* TAB 3: BUKU SAKU PETUGAS POSKO (LENGKAP)    */}
+          {/* TAB 2: BUKU SAKU PETUGAS POSKO (LENGKAP)    */}
           {/* ========================================= */}
           {activeTab === 'panduan' && (
             <div className="card shadow-sm border-0 rounded-0 bg-white p-3 p-md-5 mb-5">
@@ -942,6 +801,13 @@ export default function DashboardZonasiTerpadu() {
                 </div>
               </div>
 
+            Tentu, saya sudah merangkum semua riwayat laporan dari grup WhatsApp Posko tersebut. Banyak sekali kasus baru yang muncul seperti masalah KK Pendatang Baru, Nilai TKA yang terbaca NOL, *error* saat *upload* berkas, hingga warga yang panik karena sekolah asalnya salah wilayah.
+
+Saya telah merombak ulang **Bagian 7. FAQ** menjadi pusat *troubleshooting* yang sangat detail. Di setiap kasus, saya sertakan **"Cara Menjawab ke Warga"** dan **"Template Copy-Paste ke Grup Posko"** agar kamu besok tinggal *copy*, isi NIK, dan kirim ke grup.
+
+Silakan ganti **hanya bagian FAQ** kamu (dimulai dari `Bagian 7. FAQ`) dengan blok kode di bawah ini:
+
+```jsx
               {/* BAB 7: TROUBLESHOOTING GRUP WA */}
               <div className="mb-2 border-top pt-5">
                 <h5 className="fw-bold text-success mb-4 border-start border-success border-4 ps-3">Bagian 7. FAQ & Template Laporan Posko (Wajib Baca)</h5>                
@@ -1178,7 +1044,12 @@ export default function DashboardZonasiTerpadu() {
                 </div>
               </div>
 
+
+
             </div>
+          )}
+          {activeTab === 'antrian' && (
+             <Antrean />
           )}
           
         </div>
