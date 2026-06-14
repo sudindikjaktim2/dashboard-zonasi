@@ -5,7 +5,7 @@ export default function Antrean() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Sesuaikan URL ini dengan port backend Node.js kamu
-  const API_URL = 'http://localhost:5000/api/antrean';
+const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
 
   const fetchAntrean = async () => {
     try {
@@ -65,7 +65,7 @@ export default function Antrean() {
         {/* --- LOKET SUDIN (9 MEJA) --- */}
         <div className="mb-5">
           <h5 className="fw-bold text-primary mb-3 text-center border-bottom border-primary pb-2 d-inline-block mx-auto">
-            LOKET LAYANAN SUDIN PENDIDIKAN
+            LOKET LAYANAN SUDIN PENDIDIKAN JT2
           </h5>
           <div className="row g-3 justify-content-center">
             {antreanSudin.map((item) => (

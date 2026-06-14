@@ -3,7 +3,15 @@ const cors = require('cors');
 const { Pool } = require('pg');
 
 const app = express();
-app.use(cors());
+
+// UPDATE BAGIAN CORS INI:
+// Hanya izinkan website frontend kamu yang bisa mengakses/merubah antrean
+app.use(cors({
+  origin: 'https://zonasispmb.sudindikjt2.site',
+  methods: ['GET', 'POST'],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Ganti string ini dengan Connection String dari Neon Tech kamu
