@@ -61,7 +61,7 @@ app.post('/api/antrean/update', async (req, res) => {
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Gagal mengupdate antrean' });
+    res.status(500).json({ error: 'Gagal mengupdate antrean.' });
   }
 });
 
