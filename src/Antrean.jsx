@@ -12,7 +12,7 @@ export default function Antrean() {
   const prevAntreanRef = useRef([]);
 
   // GANTI DENGAN URL BACKEND NODE.JS KAMU NANTI (Misal: https://api.zonasispmb.com/api/antrean)
-const API_URL = '';
+const API_URL = 'https://dashboard-zonasi.onrender.com/api/antrean';
   // ==========================================
   // FUNGSI SUARA AI (TEXT TO SPEECH)
   // ==========================================

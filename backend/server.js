@@ -7,7 +7,7 @@ const app = express();
 // UPDATE BAGIAN CORS INI:
 // Hanya izinkan website frontend kamu yang bisa mengakses/merubah antrean
 app.use(cors({
-  origin: '',
+  origin: 'https://zonasispmb.sudindikjt2.site',
   methods: ['GET', 'POST'],
   credentials: true
 }));
@@ -16,7 +16,7 @@ app.use(express.json());
 
 // Ganti string ini dengan Connection String dari Neon Tech kamu
 const pool = new Pool({
-  connectionString: ''
+  connectionString: 'postgresql://neondb_owner:npg_08JYBzWFxjNI@ep-old-silence-advl8jut-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=verify-full'
 });
 
 // Endpoint untuk MENGAMBIL semua data antrean
@@ -61,7 +61,7 @@ app.post('/api/antrean/update', async (req, res) => {
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Gagal mengupdate antrean.' });
+    res.status(500).json({ error: 'Gagal mengupdate antrean' });
   }
 });
 
